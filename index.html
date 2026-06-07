@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b3d2e" />
+<link rel="manifest" href="manifest.json" />
+<title>Kasir Klinik Pijat SEHAT NUSANTARA</title>
+<style>
+  :root{
+    --bg:#fbf7ef; --ink:#13241c; --muted:#3a4f43; --line:#c7d3c9;
+    --brand:#0b3d2e; --brand-ink:#ffffff; --accent:#b4530f; --ok:#135e30;
+    --warn:#8a2d0c; --card:#ffffff; --focus:#1144c4;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"Atkinson Hyperlegible","Segoe UI",Tahoma,Verdana,sans-serif;
+    font-size:1.12rem; line-height:1.5; -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:640px;margin:0 auto;padding:16px 16px 110px;}
+  header.appbar{background:var(--brand);color:var(--brand-ink);padding:14px 16px;position:sticky;top:0;z-index:10;}
+  header.appbar h1{font-size:1.25rem;margin:0;font-weight:800;}
+  header.appbar p{margin:2px 0 0;font-size:.85rem;opacity:.92;}
+  h2.screen-title{font-size:1.5rem;margin:8px 0 14px;font-weight:800;outline:none;}
+  h3{font-size:1.1rem;margin:18px 0 8px;}
+  p.help{color:var(--muted);margin:0 0 16px;}
+  button{font-family:inherit;font-size:1.12rem;cursor:pointer;}
+  .btn{display:block;width:100%;text-align:left;background:var(--card);color:var(--ink);
+    border:2px solid var(--line);border-radius:14px;padding:18px;margin:0 0 12px;min-height:62px;font-weight:600;}
+  .btn:hover{border-color:var(--brand);}
+  .btn .sub{display:block;font-size:.82rem;color:var(--muted);font-weight:500;margin-top:4px;}
+  .btn.primary{background:var(--brand);color:var(--brand-ink);border-color:var(--brand);}
+  .btn.primary .sub{color:#d8e6df;}
+  .btn.accent{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .btn.accent .sub{color:#fde3cf;}
+  .btn.big{font-size:1.35rem;min-height:92px;font-weight:800;}
+  .btn.ghost{background:transparent;}
+  .btn.danger{color:var(--warn);border-color:#e6c0b2;}
+  .btn[aria-pressed="true"]{outline:3px solid var(--focus);}
+  :focus-visible{outline:4px solid var(--focus);outline-offset:3px;border-radius:8px;}
+  .row{display:flex;gap:10px;} .row .btn{margin-bottom:0;}
+  label{display:block;font-weight:700;margin:14px 0 6px;}
+  input,select{width:100%;font-size:1.18rem;padding:14px;border:2px solid var(--line);border-radius:12px;font-family:inherit;background:#fff;color:var(--ink);}
+  .card{background:var(--card);border:2px solid var(--line);border-radius:14px;padding:16px;margin:0 0 14px;}
+  .qty{display:flex;align-items:center;gap:12px;justify-content:center;margin:18px 0;}
+  .qty button{width:84px;height:84px;border-radius:18px;border:2px solid var(--brand);background:#fff;font-size:2.4rem;font-weight:800;color:var(--brand);}
+  .qty .num{font-size:3rem;font-weight:800;min-width:80px;text-align:center;}
+  .total{font-size:1.8rem;font-weight:800;margin:10px 0;}
+  .muted{color:var(--muted);}
+  .list-item{border-bottom:1px solid var(--line);padding:12px 0;}
+  .stat{font-size:1.35rem;font-weight:800;margin:2px 0;}
+  .stat span{font-size:.95rem;font-weight:600;color:var(--muted);display:block;}
+  .backlink{background:none;border:none;color:var(--brand);font-weight:700;padding:10px 0;text-decoration:underline;font-size:1.05rem;}
+  .visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
+  .divider{height:1px;background:var(--line);margin:18px 0;}
+  .ledger{font-size:1.02rem;}
+  .ledger .ln{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px dotted var(--line);}
+  .ledger .ln.totline{font-weight:800;border-bottom:2px solid var(--ink);}
+</style>
+</head>
+<body>
+<header class="appbar">
+  <h1 id="appTitle">Kasir Klinik Pijat</h1>
+  <p id="appSub">SEHAT NUSANTARA</p>
+</header>
+<div class="wrap"><main id="app"></main></div>
+<div id="announce" class="visually-hidden" role="status" aria-live="assertive"></div>
+
+<script src="xlsx.full.min.js"></script>
+<script>
+"use strict";
+
+/* =================== PENYIMPANAN =================== */
+var DB_KEY="kasir_panti_v2";
+function defaultServices(){
+  return [
+    {id:"s1",name:"Pijat Relaksasi",price:100000},
+    {id:"s2",name:"Pijat Keseleo",price:100000},
+    {id:"s3",name:"Refleksi",price:100000},
+    {id:"s4",name:"Acupressure",price:100000}
+  ];
+}
+function blankDB(){
+  return {
+    settings:{
+      pantiName:"Klinik Pijat Tunanetra SEHAT NUSANTARA",
+      ownerPin:"", phone:"0813 1850 744",
+      address:"Jl. Kramat Sentiong No. 57A, Jakarta Pusat",
+      transportFee:20000, defaultCommission:60, setupDone:false
+    },
+    services:defaultServices(), therapists:[],
+    transactions:[], expenses:[], commissionPayments:[], capital:[], assets:[]
+  };
+}
+var db=loadDB();
+function loadDB(){
+  try{
+    var raw=localStorage.getItem(DB_KEY); if(!raw) return blankDB();
+    var d=JSON.parse(raw), b=blankDB();
+    for(var k in b){ if(!(k in d)) d[k]=b[k]; }
+    for(var s in b.settings){ if(!(s in d.settings)) d.settings[s]=b.settings[s]; }
+    return d;
+  }catch(e){ return blankDB(); }
+}
+function saveDB(){ try{ localStorage.setItem(DB_KEY,JSON.stringify(db)); }catch(e){ alert("Data gagal disimpan di perangkat."); } }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+/* =================== FORMAT =================== */
+function rupiah(n){ n=Math.round(n||0); return (n<0?"-Rp ":"Rp ")+Math.abs(n).toLocaleString("id-ID"); }
+function pad(n){ return (n<10?"0":"")+n; }
+function todayStr(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+function monthOf(s){ return (s||"").slice(0,7); }
+function thisMonth(){ return todayStr().slice(0,7); }
+function namaBulan(ym){ var b=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]; var p=ym.split("-"); return b[parseInt(p[1],10)-1]+" "+p[0]; }
+function tglPanjang(s){ var b=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]; var p=s.split("-"); return parseInt(p[2],10)+" "+b[parseInt(p[1],10)-1]+" "+p[0]; }
+function terbilang(n){
+  n=Math.round(Math.abs(n)); if(n===0) return "nol";
+  var sa=["","satu","dua","tiga","empat","lima","enam","tujuh","delapan","sembilan","sepuluh","sebelas"];
+  function w(x){
+    if(x<12) return sa[x];
+    if(x<20) return w(x-10)+" belas";
+    if(x<100){var p=Math.floor(x/10),r=x%10;return sa[p]+" puluh"+(r?" "+sa[r]:"");}
+    if(x<200) return "seratus"+(x-100?" "+w(x-100):"");
+    if(x<1000){var p=Math.floor(x/100),r=x%100;return sa[p]+" ratus"+(r?" "+w(r):"");}
+    if(x<2000) return "seribu"+(x-1000?" "+w(x-1000):"");
+    if(x<1000000){var p=Math.floor(x/1000),r=x%1000;return w(p)+" ribu"+(r?" "+w(r):"");}
+    if(x<1000000000){var p=Math.floor(x/1000000),r=x%1000000;return w(p)+" juta"+(r?" "+w(r):"");}
+    var p=Math.floor(x/1000000000),r=x%1000000000;return w(p)+" miliar"+(r?" "+w(r):"");
+  }
+  return w(n);
+}
+
+/* =================== KERANGKA TAMPILAN =================== */
+var app=document.getElementById("app");
+function announce(m){ var e=document.getElementById("announce"); e.textContent=""; setTimeout(function(){ e.textContent=m; },60); }
+function setHeader(){ document.getElementById("appSub").textContent=db.settings.pantiName||"SEHAT NUSANTARA"; }
+function render(html){ app.innerHTML=html; setHeader(); var t=app.querySelector(".screen-title"); if(t){ t.setAttribute("tabindex","-1"); t.focus(); } }
+function el(id){ return document.getElementById(id); }
+function on(id,ev,fn){ var e=el(id); if(e) e.addEventListener(ev,fn); }
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function digits(v){ return parseInt(String(v||"").replace(/\D/g,""),10)||0; }
+function each(sel,fn){ Array.prototype.forEach.call(app.querySelectorAll(sel),fn); }
+
+/* =================== MULAI =================== */
+function start(){ if(!db.settings.setupDone) setupName(); else home(); }
+
+/* ---------- Pengaturan awal ---------- */
+function setupName(){
+  render(
+    '<h2 class="screen-title">Selamat datang</h2>'+
+    '<p class="help">Mari atur sekali saja. Beberapa hal sudah saya isikan, tinggal periksa.</p>'+
+    '<label for="nm">Nama klinik</label>'+
+    '<input id="nm" type="text" value="'+esc(db.settings.pantiName)+'" />'+
+    '<label for="pin">Buat PIN pemilik (4 sampai 6 angka)</label>'+
+    '<input id="pin" type="tel" inputmode="numeric" placeholder="contoh: 1234" />'+
+    '<p class="help">PIN melindungi laporan keuangan dan pengaturan.</p>'+
+    '<button class="btn primary big" id="next">Lanjut</button>'
+  );
+  on("next","click",function(){
+    var nm=el("nm").value.trim(), pin=el("pin").value.trim();
+    if(!nm){ announce("Nama klinik belum diisi."); el("nm").focus(); return; }
+    if(!/^[0-9]{4,6}$/.test(pin)){ announce("PIN harus 4 sampai 6 angka."); el("pin").focus(); return; }
+    db.settings.pantiName=nm; db.settings.ownerPin=pin; saveDB(); setupIdentity();
+  });
+}
+function setupIdentity(){
+  render(
+    '<h2 class="screen-title">Identitas klinik</h2>'+
+    '<p class="help">Dipakai pada struk dan laporan.</p>'+
+    '<label for="ph">Nomor telepon</label>'+
+    '<input id="ph" type="text" value="'+esc(db.settings.phone)+'" />'+
+    '<label for="ad">Alamat</label>'+
+    '<input id="ad" type="text" value="'+esc(db.settings.address)+'" />'+
+    '<button class="btn primary big" id="next">Lanjut</button>'+
+    '<button class="backlink" id="back">Kembali</button>'
+  );
+  on("next","click",function(){ db.settings.phone=el("ph").value.trim(); db.settings.address=el("ad").value.trim(); saveDB(); setupTherapists(); });
+  on("back","click",setupName);
+}
+function setupTherapists(){
+  var list=db.therapists.length?db.therapists.map(function(t){return '<div class="list-item">'+esc(t.name)+'</div>';}).join(""):'<p class="muted">Belum ada terapis.</p>';
+  render(
+    '<h2 class="screen-title">Daftar terapis</h2>'+
+    '<p class="help">Bagi hasil saat ini '+db.settings.defaultCommission+' persen untuk terapis. Bisa diubah nanti.</p>'+
+    '<div class="card">'+list+'</div>'+
+    '<label for="thn">Nama terapis</label>'+
+    '<input id="thn" type="text" placeholder="contoh: Budi" />'+
+    '<button class="btn accent" id="add">Tambah terapis</button>'+
+    '<div class="divider"></div>'+
+    '<button class="btn primary big" id="done">Selesai, mulai pakai</button>'
+  );
+  on("add","click",function(){ var n=el("thn").value.trim(); if(!n){announce("Nama belum diisi.");return;} db.therapists.push({id:uid(),name:n}); saveDB(); announce("Terapis "+n+" ditambahkan."); setupTherapists(); });
+  on("done","click",function(){ db.settings.setupDone=true; saveDB(); announce("Pengaturan selesai."); home(); });
+}
+
+/* ---------- Beranda ---------- */
+function home(){
+  var pend=db.transactions.filter(function(t){return !t.settled;});
+  var note=pend.length?'<p class="help" role="note">Pengingat: '+pend.length+' transaksi belum lunas.</p>':'';
+  render(
+    '<h2 class="screen-title">Menu utama</h2>'+note+
+    '<button class="btn primary big" id="m1">Transaksi baru<span class="sub">Catat pijat yang baru selesai</span></button>'+
+    '<button class="btn big" id="m2">Catat pengeluaran<span class="sub">Minyak, listrik, transport, dll</span></button>'+
+    '<button class="btn big" id="m3">Daftar piutang<span class="sub">Pelanggan yang belum bayar</span></button>'+
+    '<button class="btn big" id="m4">Bayar komisi terapis<span class="sub">Lihat & catat pembayaran</span></button>'+
+    '<button class="btn big" id="m5">Riwayat transaksi<span class="sub">Perbaiki atau hapus catatan</span></button>'+
+    '<button class="btn big" id="m6">Laporan keuangan<span class="sub">Terkunci PIN. Bisa diunduh Excel</span></button>'+
+    '<button class="btn big ghost" id="m7">Pengaturan<span class="sub">Terkunci PIN</span></button>'
+  );
+  on("m1","click",txStart); on("m2","click",expenseScreen); on("m3","click",debtsScreen);
+  on("m4","click",commissionScreen); on("m5","click",historyScreen);
+  on("m6","click",function(){ requirePin(reportScreen); }); on("m7","click",function(){ requirePin(settingsScreen); });
+}
+function requirePin(next){
+  render('<h2 class="screen-title">Masukkan PIN pemilik</h2><label for="p">PIN</label><input id="p" type="tel" inputmode="numeric" /><button class="btn primary big" id="ok">Buka</button><button class="backlink" id="b">Kembali ke menu</button>');
+  on("ok","click",function(){ if(el("p").value.trim()===db.settings.ownerPin) next(); else { announce("PIN salah."); el("p").value=""; el("p").focus(); } });
+  on("b","click",home);
+}
+
+/* =================== TRANSAKSI =================== */
+var draft=null;
+function txStart(){ draft={items:[],performer:null,therapistId:null,therapistName:null,location:null,transport:0,payment:null,customer:""}; txPickService(); }
+function txPickService(){
+  var btns=db.services.map(function(s){return '<button class="btn" data-id="'+s.id+'">'+esc(s.name)+'<span class="sub">'+rupiah(s.price)+'</span></button>';}).join("");
+  var cart=draft.items.length?'<p class="help" role="note">Sudah dipilih: '+draft.items.map(function(i){return esc(i.name)+" ×"+i.qty;}).join(", ")+'.</p>':'';
+  render('<h2 class="screen-title">Pilih layanan</h2>'+cart+btns+'<button class="backlink" id="cancel">Batal & kembali ke menu</button>');
+  each("[data-id]",function(b){ b.addEventListener("click",function(){ var s=db.services.filter(function(x){return x.id===b.getAttribute("data-id");})[0]; txQty(s); }); });
+  on("cancel","click",home);
+}
+function txQty(service){
+  var st={qty:1,price:service.price,editing:false};
+  function draw(){
+    var priceBlock=st.editing
+      ? '<label for="pr">Harga satuan (rupiah)</label><input id="pr" type="tel" inputmode="numeric" value="'+st.price+'" /><button class="btn accent" id="apply">Terapkan harga</button>'
+      : '<p class="help">Harga satuan: '+rupiah(st.price)+(st.price!==service.price?' (diubah dari '+rupiah(service.price)+')':'')+' <button class="backlink" id="edit" style="display:inline">Ubah harga / diskon</button></p>';
+    render(
+      '<h2 class="screen-title">Berapa orang untuk '+esc(service.name)+'?</h2>'+
+      '<div class="qty"><button id="minus" aria-label="Kurangi">−</button><span class="num" id="qn">'+st.qty+'</span><button id="plus" aria-label="Tambah">+</button></div>'+
+      priceBlock+
+      '<p class="total" id="tt">Total: '+rupiah(st.price*st.qty)+'</p>'+
+      '<button class="btn primary big" id="ok">Pakai ini</button>'+
+      '<button class="backlink" id="back">Kembali</button>'
+    );
+    on("minus","click",function(){ if(st.qty>1){st.qty--; sync();} });
+    on("plus","click",function(){ st.qty++; sync(); });
+    on("edit","click",function(){ st.editing=true; draw(); });
+    on("apply","click",function(){ var v=digits(el("pr").value); if(v<=0){announce("Harga belum benar.");return;} st.price=v; st.editing=false; draw(); announce("Harga satuan diubah menjadi "+terbilang(v)+" rupiah."); });
+    on("ok","click",function(){ draft.items.push({serviceId:service.id,name:service.name,price:st.price,qty:st.qty}); txAddMore(); });
+    on("back","click",txPickService);
+  }
+  function sync(){ el("qn").textContent=st.qty; el("tt").textContent="Total: "+rupiah(st.price*st.qty); announce("Jumlah "+terbilang(st.qty)+". Total "+terbilang(st.price*st.qty)+" rupiah."); }
+  draw();
+}
+function txAddMore(){
+  var sub=draft.items.reduce(function(a,i){return a+i.price*i.qty;},0);
+  render('<h2 class="screen-title">Tambah layanan lain?</h2><p class="help">Untuk pelanggan yang sama. Sementara total '+rupiah(sub)+'.</p><button class="btn" id="more">Ya, tambah lagi</button><button class="btn primary big" id="cont">Tidak, lanjut</button>');
+  on("more","click",txPickService); on("cont","click",txPerformer);
+}
+function txPerformer(){
+  var th=db.therapists.map(function(t){return '<button class="btn" data-th="'+t.id+'">'+esc(t.name)+'</button>';}).join("");
+  render('<h2 class="screen-title">Siapa yang memijat?</h2><button class="btn primary" id="self">Saya sendiri (pemilik)<span class="sub">Pendapatan penuh ke kas</span></button>'+(db.therapists.length?'<h3>Atau pilih terapis (bagi hasil)</h3>'+th:'<p class="help">Belum ada terapis.</p>')+'<button class="backlink" id="back">Kembali</button>');
+  on("self","click",function(){ draft.performer="owner"; draft.therapistId=null; draft.therapistName=null; txLocation(); });
+  each("[data-th]",function(b){ b.addEventListener("click",function(){ var t=db.therapists.filter(function(x){return x.id===b.getAttribute("data-th");})[0]; draft.performer="therapist"; draft.therapistId=t.id; draft.therapistName=t.name; txLocation(); }); });
+  on("back","click",txAddMore);
+}
+function txLocation(){
+  render('<h2 class="screen-title">Di mana layanannya?</h2><button class="btn primary" id="on">Di tempat (klinik)<span class="sub">Harga normal</span></button><button class="btn" id="call">Panggilan ke rumah<span class="sub">Tambah biaya transport</span></button><button class="backlink" id="back">Kembali</button>');
+  on("on","click",function(){ draft.location="onsite"; draft.transport=0; txPayment(); });
+  on("call","click",function(){ draft.location="callout"; txTransport(); });
+  on("back","click",txPerformer);
+}
+function txTransport(){
+  render('<h2 class="screen-title">Biaya transport</h2><p class="help">Diberikan penuh ke yang berangkat, tidak dibagi.</p><label for="tr">Jumlah (rupiah)</label><input id="tr" type="tel" inputmode="numeric" value="'+(db.settings.transportFee||0)+'" /><button class="btn primary big" id="ok">Pakai biaya ini</button><button class="backlink" id="back">Kembali</button>');
+  on("ok","click",function(){ draft.transport=digits(el("tr").value); txPayment(); });
+  on("back","click",txLocation);
+}
+function txPayment(){
+  render('<h2 class="screen-title">Cara pembayaran</h2><button class="btn primary" id="cash">Tunai (lunas)</button><button class="btn" id="tf">Transfer / QRIS (lunas)</button><button class="btn" id="up">Belum bayar (piutang)</button><button class="backlink" id="back">Kembali</button>');
+  on("cash","click",function(){ draft.payment="cash"; txConfirm(); });
+  on("tf","click",function(){ draft.payment="transfer"; txConfirm(); });
+  on("up","click",function(){ draft.payment="unpaid"; txCustomer(); });
+  on("back","click",function(){ draft.location==="callout"?txTransport():txLocation(); });
+}
+function txCustomer(){
+  render('<h2 class="screen-title">Nama pelanggan (piutang)</h2><p class="help">Agar mudah ditagih nanti.</p><label for="c">Nama pelanggan</label><input id="c" type="text" /><button class="btn primary big" id="ok">Lanjut</button><button class="backlink" id="back">Kembali</button>');
+  on("ok","click",function(){ var c=el("c").value.trim(); if(!c){announce("Nama belum diisi.");el("c").focus();return;} draft.customer=c; txConfirm(); });
+  on("back","click",txPayment);
+}
+function calc(d){
+  var jasa=d.items.reduce(function(a,i){return a+i.price*i.qty;},0);
+  var total=jasa+(d.transport||0);
+  var pct=d.performer==="therapist"?(db.settings.defaultCommission||0):0;
+  var komisi=Math.round(jasa*pct/100);
+  var trToTh=(d.performer==="therapist"&&d.location==="callout")?(d.transport||0):0;
+  var take=komisi+trToTh;
+  return {jasa:jasa,total:total,pct:pct,therapistTake:take,kasShare:total-take};
+}
+function txConfirm(){
+  var c=calc(draft);
+  var items=draft.items.map(function(i){return esc(i.name)+" ×"+i.qty+" = "+rupiah(i.price*i.qty);}).join("<br>");
+  var who=draft.performer==="owner"?"Saya sendiri":"Terapis "+esc(draft.therapistName);
+  var loc=draft.location==="callout"?"Panggilan (transport "+rupiah(draft.transport)+")":"Di tempat";
+  var pay=draft.payment==="cash"?"Tunai":draft.payment==="transfer"?"Transfer/QRIS":"Belum bayar (piutang)";
+  var bagi=draft.performer==="therapist"?'<p>Hak terapis (saat lunas): '+rupiah(c.therapistTake)+'<br>Hak kas/Pertuni: '+rupiah(c.kasShare)+'</p>':'';
+  render('<h2 class="screen-title">Periksa & simpan</h2><div class="card"><p>'+items+'</p><p>Pelaksana: '+who+'<br>Lokasi: '+loc+'<br>Pembayaran: '+pay+(draft.customer?'<br>Pelanggan: '+esc(draft.customer):'')+'</p>'+bagi+'<p class="total">Total: '+rupiah(c.total)+'</p></div><button class="btn primary big" id="save">Simpan transaksi</button><button class="backlink" id="back">Kembali</button>');
+  announce("Total "+terbilang(c.total)+" rupiah. Tekan simpan untuk menyimpan.");
+  on("save","click",saveTx); on("back","click",txPayment);
+}
+function saveTx(){
+  var c=calc(draft);
+  var tx={id:uid(),createdAt:new Date().toISOString(),dateStr:todayStr(),items:draft.items.slice(),
+    jasa:c.jasa,transport:draft.transport||0,total:c.total,performer:draft.performer,
+    therapistId:draft.therapistId,therapistName:draft.therapistName,location:draft.location,
+    payment:draft.payment,customer:draft.customer||"",commissionPercent:c.pct,
+    therapistTake:c.therapistTake,kasShare:c.kasShare,
+    settled:draft.payment!=="unpaid",settledMethod:draft.payment!=="unpaid"?draft.payment:null,
+    settledDate:draft.payment!=="unpaid"?todayStr():null};
+  db.transactions.push(tx); saveDB(); txSaved(tx);
+}
+function txSaved(tx){
+  render('<h2 class="screen-title">Transaksi tersimpan</h2><div class="card"><p class="total">'+rupiah(tx.total)+'</p><p class="muted">Untuk memperbaiki, buka Riwayat transaksi di menu utama.</p></div><button class="btn accent" id="wa">Kirim struk ke WhatsApp</button><button class="btn primary big" id="home">Selesai, ke menu utama</button>');
+  announce("Transaksi tersimpan, total "+terbilang(tx.total)+" rupiah.");
+  on("wa","click",function(){ sendReceipt(tx); });
+  on("home","click",home);
+}
+function sendReceipt(tx){
+  var L=["*"+(db.settings.pantiName||"Klinik Pijat")+"*"];
+  if(db.settings.address) L.push(db.settings.address);
+  if(db.settings.phone) L.push("Telp: "+db.settings.phone);
+  L.push("--------------------","Tanggal: "+tglPanjang(tx.dateStr));
+  tx.items.forEach(function(i){ L.push(i.name+" x"+i.qty+"  "+rupiah(i.price*i.qty)); });
+  if(tx.transport) L.push("Transport  "+rupiah(tx.transport));
+  L.push("--------------------","*TOTAL: "+rupiah(tx.total)+"*");
+  L.push("Pembayaran: "+(tx.payment==="cash"?"Tunai":tx.payment==="transfer"?"Transfer/QRIS":"Belum bayar"));
+  L.push("","Terima kasih atas kunjungan Anda 🙏");
+  window.open("https://wa.me/?text="+encodeURIComponent(L.join("\n")),"_blank");
+}
+
+/* =================== PENGELUARAN =================== */
+function expenseScreen(){
+  var cats=["Minyak/Krim","Alat habis pakai","Laundry/Linen","Listrik & Air","Sewa tempat","Transport","Pulsa/Data","Perawatan alat","Lain-lain"];
+  render('<h2 class="screen-title">Catat pengeluaran</h2><label for="cat">Kategori</label><select id="cat">'+cats.map(function(c){return '<option>'+c+'</option>';}).join("")+'</select><label for="amt">Jumlah (rupiah)</label><input id="amt" type="tel" inputmode="numeric" /><label for="note">Catatan (boleh kosong)</label><input id="note" type="text" /><button class="btn primary big" id="save">Simpan pengeluaran</button><button class="backlink" id="back">Kembali ke menu</button>');
+  on("save","click",function(){ var a=digits(el("amt").value); if(a<=0){announce("Jumlah belum benar.");el("amt").focus();return;} db.expenses.push({id:uid(),dateStr:todayStr(),createdAt:new Date().toISOString(),category:el("cat").value,amount:a,note:el("note").value.trim()}); saveDB(); announce("Pengeluaran "+el("cat").value+" "+terbilang(a)+" rupiah tersimpan."); home(); });
+  on("back","click",home);
+}
+
+/* =================== PIUTANG =================== */
+function debtsScreen(){
+  var pend=db.transactions.filter(function(t){return !t.settled;});
+  var tot=pend.reduce(function(a,t){return a+t.total;},0);
+  var items=pend.length?pend.map(function(t){return '<div class="list-item"><strong>'+esc(t.customer||"Tanpa nama")+'</strong> — '+rupiah(t.total)+'<br><span class="muted">'+t.items.map(function(i){return esc(i.name);}).join(", ")+' · '+t.dateStr+'</span><br><button class="btn accent" data-id="'+t.id+'" style="margin-top:8px">Tandai sudah lunas</button></div>';}).join(""):'<p class="muted">Tidak ada piutang. Semua lunas.</p>';
+  render('<h2 class="screen-title">Daftar piutang</h2><p class="help">'+(pend.length?"Ada "+pend.length+" belum bayar, total "+rupiah(tot)+".":"")+'</p>'+items+'<button class="backlink" id="back">Kembali ke menu</button>');
+  each("[data-id]",function(b){ b.addEventListener("click",function(){ settle(b.getAttribute("data-id")); }); });
+  on("back","click",home);
+}
+function settle(id){
+  var t=db.transactions.filter(function(x){return x.id===id;})[0]; if(!t) return;
+  render('<h2 class="screen-title">Lunas dengan cara apa?</h2><p class="help">'+esc(t.customer||"Pelanggan")+' membayar '+rupiah(t.total)+'.</p><button class="btn primary" id="cash">Tunai</button><button class="btn" id="tf">Transfer / QRIS</button><button class="backlink" id="back">Kembali</button>');
+  function done(m){ t.settled=true; t.settledMethod=m; t.settledDate=todayStr(); saveDB(); announce("Piutang "+(t.customer||"")+" ditandai lunas. Komisi terapis kini diakui."); debtsScreen(); }
+  on("cash","click",function(){ done("cash"); }); on("tf","click",function(){ done("transfer"); }); on("back","click",debtsScreen);
+}
+
+/* =================== KOMISI =================== */
+function accrued(thId){
+  var earned=db.transactions.filter(function(t){return t.therapistId===thId && t.settled;}).reduce(function(a,t){return a+(t.therapistTake||0);},0);
+  var paid=db.commissionPayments.filter(function(p){return p.therapistId===thId;}).reduce(function(a,p){return a+p.amount;},0);
+  return earned-paid;
+}
+function commissionScreen(){
+  var rows=db.therapists.map(function(t){ return '<div class="list-item"><strong>'+esc(t.name)+'</strong><br><span class="muted">Belum dibayar (dari sesi yang sudah lunas): '+rupiah(accrued(t.id))+'</span><br><button class="btn accent" data-id="'+t.id+'" style="margin-top:8px">Catat pembayaran</button></div>'; }).join("");
+  render('<h2 class="screen-title">Bayar komisi terapis</h2><p class="help">Komisi hanya dihitung dari sesi yang pelanggannya sudah membayar.</p>'+(db.therapists.length?rows:'<p class="muted">Belum ada terapis.</p>')+'<button class="backlink" id="back">Kembali ke menu</button>');
+  each("[data-id]",function(b){ b.addEventListener("click",function(){ payComm(b.getAttribute("data-id")); }); });
+  on("back","click",home);
+}
+function payComm(thId){
+  var t=db.therapists.filter(function(x){return x.id===thId;})[0]; if(!t) return; var owe=accrued(thId);
+  render('<h2 class="screen-title">Bayar komisi '+esc(t.name)+'</h2><p class="help">Belum dibayar: '+rupiah(owe)+'.</p><label for="a">Jumlah dibayar (rupiah)</label><input id="a" type="tel" inputmode="numeric" value="'+(owe>0?owe:0)+'" /><button class="btn primary big" id="ok">Catat pembayaran</button><button class="backlink" id="back">Kembali</button>');
+  on("ok","click",function(){ var a=digits(el("a").value); if(a<=0){announce("Jumlah belum benar.");return;} db.commissionPayments.push({id:uid(),therapistId:thId,amount:a,dateStr:todayStr(),createdAt:new Date().toISOString()}); saveDB(); announce("Pembayaran komisi "+t.name+" "+terbilang(a)+" rupiah tercatat."); commissionScreen(); });
+  on("back","click",commissionScreen);
+}
+
+/* =================== RIWAYAT =================== */
+function historyScreen(){
+  var tx=db.transactions.slice().sort(function(a,b){return b.createdAt<a.createdAt?-1:1;}).slice(0,40);
+  var items=tx.length?tx.map(function(t){ return '<div class="list-item"><strong>'+rupiah(t.total)+'</strong> · '+t.dateStr+(t.settled?"":" · belum lunas")+'<br><span class="muted">'+t.items.map(function(i){return esc(i.name)+" ×"+i.qty;}).join(", ")+(t.performer==="therapist"?" · "+esc(t.therapistName):" · pemilik")+'</span><br><button class="btn" data-id="'+t.id+'" style="margin-top:8px">Buka / perbaiki</button></div>'; }).join(""):'<p class="muted">Belum ada transaksi.</p>';
+  render('<h2 class="screen-title">Riwayat transaksi</h2><p class="help">40 transaksi terakhir. Bisa diperbaiki atau dihapus.</p>'+items+'<button class="backlink" id="back">Kembali ke menu</button>');
+  each("[data-id]",function(b){ b.addEventListener("click",function(){ txDetail(b.getAttribute("data-id")); }); });
+  on("back","click",home);
+}
+function txDetail(id){
+  var t=db.transactions.filter(function(x){return x.id===id;})[0]; if(!t){ historyScreen(); return; }
+  var items=t.items.map(function(i){return esc(i.name)+" ×"+i.qty+" = "+rupiah(i.price*i.qty);}).join("<br>");
+  render('<h2 class="screen-title">Detail transaksi</h2><div class="card"><p>'+items+(t.transport?'<br>Transport '+rupiah(t.transport):'')+'</p><p class="total">'+rupiah(t.total)+'</p><p class="muted">Tanggal '+t.dateStr+' · '+(t.settled?"lunas ("+(t.settledMethod==="cash"?"tunai":"transfer")+")":"belum lunas")+(t.performer==="therapist"?" · terapis "+esc(t.therapistName):" · pemilik")+'</p></div>'+
+    '<label for="d">Ubah tanggal</label><input id="d" type="date" value="'+t.dateStr+'" />'+
+    '<button class="btn accent" id="savedate">Simpan tanggal</button>'+
+    (t.settled?'':'<button class="btn" id="settle">Tandai sudah lunas</button>')+
+    '<button class="btn danger" id="del">Hapus transaksi ini</button>'+
+    '<button class="backlink" id="back">Kembali ke riwayat</button>');
+  on("savedate","click",function(){ var v=el("d").value; if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){announce("Tanggal belum benar.");return;} t.dateStr=v; if(t.settled&&t.settledDate) t.settledDate=v; saveDB(); announce("Tanggal diperbarui."); txDetail(id); });
+  on("settle","click",function(){ settle(id); });
+  on("del","click",function(){ confirmDelete(id); });
+  on("back","click",historyScreen);
+}
+function confirmDelete(id){
+  render('<h2 class="screen-title">Hapus transaksi?</h2><p class="help">Tindakan ini permanen.</p><button class="btn danger" id="yes">Ya, hapus</button><button class="btn primary" id="no">Tidak, batal</button>');
+  on("yes","click",function(){ db.transactions=db.transactions.filter(function(x){return x.id!==id;}); saveDB(); announce("Transaksi dihapus."); historyScreen(); });
+  on("no","click",function(){ txDetail(id); });
+}
+
+/* =================== PERHITUNGAN KEUANGAN =================== */
+function labaRugi(ym){
+  var tx=db.transactions.filter(function(t){return monthOf(t.dateStr)===ym;});
+  var jasa=tx.reduce(function(a,t){return a+t.jasa;},0);
+  var transport=tx.reduce(function(a,t){return a+(t.transport||0);},0);
+  var pendapatan=jasa+transport;
+  var komisi=tx.filter(function(t){return t.settled;}).reduce(function(a,t){return a+(t.therapistTake||0);},0);
+  var exp=db.expenses.filter(function(e){return monthOf(e.dateStr)===ym;});
+  var bebanCat={}; exp.forEach(function(e){ bebanCat[e.category]=(bebanCat[e.category]||0)+e.amount; });
+  var bebanLain=exp.reduce(function(a,e){return a+e.amount;},0);
+  var totalBeban=komisi+bebanLain;
+  return {ym:ym,jasa:jasa,transport:transport,pendapatan:pendapatan,komisi:komisi,bebanCat:bebanCat,bebanLain:bebanLain,totalBeban:totalBeban,laba:pendapatan-totalBeban,count:tx.length};
+}
+function neraca(){
+  var t=db.transactions;
+  var received=t.filter(function(x){return x.settled;}).reduce(function(a,x){return a+x.total;},0);
+  var unpaid=t.filter(function(x){return !x.settled;}).reduce(function(a,x){return a+x.total;},0);
+  var revenue=received+unpaid;
+  var E=db.expenses.reduce(function(a,x){return a+x.amount;},0);
+  var Crec=t.filter(function(x){return x.settled;}).reduce(function(a,x){return a+(x.therapistTake||0);},0);
+  var Cpaid=db.commissionPayments.reduce(function(a,x){return a+x.amount;},0);
+  var M=db.capital.filter(function(c){return c.type==="modal";}).reduce(function(a,c){return a+c.amount;},0);
+  var P=db.capital.filter(function(c){return c.type==="prive";}).reduce(function(a,c){return a+c.amount;},0);
+  var Akas=db.assets.filter(function(x){return x.acquire==="kas";}).reduce(function(a,x){return a+x.cost;},0);
+  var Amod=db.assets.filter(function(x){return x.acquire!=="kas";}).reduce(function(a,x){return a+x.cost;},0);
+  var Aall=Akas+Amod;
+  var kas=M-P+received-E-Cpaid-Akas;
+  var piutang=unpaid;
+  var asetTetap=Aall;
+  var totalAset=kas+piutang+asetTetap;
+  var utangKomisi=Crec-Cpaid;
+  var totalLiab=utangKomisi;
+  var modalDisetor=M-P+Amod;
+  var labaDitahan=revenue-E-Crec;
+  var totalEkuitas=modalDisetor+labaDitahan;
+  return {kas:kas,piutang:piutang,asetTetap:asetTetap,totalAset:totalAset,utangKomisi:utangKomisi,totalLiab:totalLiab,modalDisetor:modalDisetor,labaDitahan:labaDitahan,totalEkuitas:totalEkuitas,seimbang:Math.round(totalAset)===Math.round(totalLiab+totalEkuitas)};
+}
+
+/* =================== LAPORAN =================== */
+function reportScreen(){ drawReport(thisMonth()); }
+function drawReport(ym){
+  var lr=labaRugi(ym), nr=neraca();
+  var bebanRows=Object.keys(lr.bebanCat).map(function(k){return '<div class="ln"><span>'+esc(k)+'</span><span>'+rupiah(lr.bebanCat[k])+'</span></div>';}).join("");
+  render(
+    '<h2 class="screen-title">Laporan keuangan</h2>'+
+    '<div class="row" style="margin-bottom:12px"><button class="btn" id="prev">Bulan sebelumnya</button><button class="btn" id="next">Berikutnya</button></div>'+
+    '<div class="card ledger"><p class="muted">Laporan Laba Rugi — '+namaBulan(ym)+'</p>'+
+      '<div class="ln"><span>Pendapatan jasa</span><span>'+rupiah(lr.jasa)+'</span></div>'+
+      '<div class="ln"><span>Pendapatan transport</span><span>'+rupiah(lr.transport)+'</span></div>'+
+      '<div class="ln totline"><span>Total pendapatan</span><span>'+rupiah(lr.pendapatan)+'</span></div>'+
+      '<div class="ln" style="margin-top:8px"><span>Beban komisi terapis</span><span>'+rupiah(lr.komisi)+'</span></div>'+
+      bebanRows+
+      '<div class="ln totline"><span>Total beban</span><span>'+rupiah(lr.totalBeban)+'</span></div>'+
+      '<div class="ln totline"><span>Laba bersih</span><span style="color:var(--ok)">'+rupiah(lr.laba)+'</span></div>'+
+    '</div>'+
+    '<div class="card ledger"><p class="muted">Laporan Posisi Keuangan (Neraca) — per '+tglPanjang(todayStr())+'</p>'+
+      '<div class="ln"><span>Kas & setara kas</span><span>'+rupiah(nr.kas)+'</span></div>'+
+      '<div class="ln"><span>Piutang usaha</span><span>'+rupiah(nr.piutang)+'</span></div>'+
+      '<div class="ln"><span>Aset tetap (harga perolehan)</span><span>'+rupiah(nr.asetTetap)+'</span></div>'+
+      '<div class="ln totline"><span>Total aset</span><span>'+rupiah(nr.totalAset)+'</span></div>'+
+      '<div class="ln" style="margin-top:8px"><span>Utang komisi terapis</span><span>'+rupiah(nr.utangKomisi)+'</span></div>'+
+      '<div class="ln"><span>Modal disetor (bersih)</span><span>'+rupiah(nr.modalDisetor)+'</span></div>'+
+      '<div class="ln"><span>Laba ditahan</span><span>'+rupiah(nr.labaDitahan)+'</span></div>'+
+      '<div class="ln totline"><span>Total liabilitas & ekuitas</span><span>'+rupiah(nr.totalLiab+nr.totalEkuitas)+'</span></div>'+
+      '<p class="muted" style="margin-top:8px">'+(nr.seimbang?"Seimbang ✓":"Perlu diperiksa")+'</p>'+
+    '</div>'+
+    '<button class="btn accent big" id="dl">Unduh laporan Excel</button>'+
+    '<button class="btn" id="wa">Bagikan ringkasan ke WhatsApp</button>'+
+    '<button class="backlink" id="back">Kembali ke menu</button>'
+  );
+  on("prev","click",function(){ drawReport(addMonth(ym,-1)); });
+  on("next","click",function(){ drawReport(addMonth(ym,1)); });
+  on("dl","click",function(){ exportExcel(ym); });
+  on("wa","click",function(){ shareReport(ym,lr,nr); });
+  on("back","click",home);
+  announce("Laporan "+namaBulan(ym)+". Laba bersih "+terbilang(lr.laba)+" rupiah. "+(nr.seimbang?"Neraca seimbang.":""));
+}
+function addMonth(ym,delta){ var p=ym.split("-"); var d=new Date(parseInt(p[0],10),parseInt(p[1],10)-1+delta,1); return d.getFullYear()+"-"+pad(d.getMonth()+1); }
+function calkLines(){
+  return [
+    "CATATAN ATAS LAPORAN KEUANGAN",
+    "1. Identitas entitas: "+(db.settings.pantiName||"")+", "+(db.settings.address||"")+", telp "+(db.settings.phone||"")+".",
+    "2. Dasar penyusunan: laporan disusun mengikuti format SAK EMKM dengan basis akrual dan pengukuran biaya historis.",
+    "3. Pendapatan diakui pada saat jasa diberikan kepada pelanggan.",
+    "4. Komisi terapis diakui sebagai beban pada saat pembayaran diterima dari pelanggan.",
+    "5. Aset tetap dicatat sebesar harga perolehan. Penyusutan belum diterapkan pada laporan ini.",
+    "6. Piutang usaha merupakan transaksi yang jasanya telah diberikan namun belum dibayar pelanggan."
+  ];
+}
+function shareReport(ym,lr,nr){
+  var L=["*Laporan Keuangan "+(db.settings.pantiName||"")+"*","Periode: "+namaBulan(ym),"",
+    "Pendapatan: "+rupiah(lr.pendapatan),"Total beban: "+rupiah(lr.totalBeban),"*Laba bersih: "+rupiah(lr.laba)+"*","",
+    "Kas: "+rupiah(nr.kas),"Piutang: "+rupiah(nr.piutang),"Total aset: "+rupiah(nr.totalAset)];
+  window.open("https://wa.me/?text="+encodeURIComponent(L.join("\n")),"_blank");
+}
+function exportExcel(ym){
+  try{
+    var lr=labaRugi(ym), nr=neraca();
+    var wb=XLSX.utils.book_new();
+    var head=[[db.settings.pantiName||"Klinik Pijat"],[db.settings.address||""],["Telp: "+(db.settings.phone||"")],[]];
+    // Laba Rugi
+    var lrA=head.concat([["LAPORAN LABA RUGI"],["Periode",namaBulan(ym)],[],
+      ["Pendapatan jasa",lr.jasa],["Pendapatan transport",lr.transport],["Total pendapatan",lr.pendapatan],[],
+      ["Beban komisi terapis",lr.komisi]]);
+    Object.keys(lr.bebanCat).forEach(function(k){ lrA.push(["Beban "+k,lr.bebanCat[k]]); });
+    lrA.push(["Total beban",lr.totalBeban],[],["LABA BERSIH",lr.laba]);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(lrA),"Laba Rugi");
+    // Neraca
+    var nrA=head.concat([["LAPORAN POSISI KEUANGAN (NERACA)"],["Per tanggal",tglPanjang(todayStr())],[],
+      ["ASET"],["Kas & setara kas",nr.kas],["Piutang usaha",nr.piutang],["Aset tetap (harga perolehan)",nr.asetTetap],["Total aset",nr.totalAset],[],
+      ["LIABILITAS"],["Utang komisi terapis",nr.utangKomisi],["Total liabilitas",nr.totalLiab],[],
+      ["EKUITAS"],["Modal disetor (bersih)",nr.modalDisetor],["Laba ditahan",nr.labaDitahan],["Total ekuitas",nr.totalEkuitas],[],
+      ["Total liabilitas & ekuitas",nr.totalLiab+nr.totalEkuitas],["Status",nr.seimbang?"Seimbang":"Perlu diperiksa"]]);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(nrA),"Neraca");
+    // CALK
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(calkLines().map(function(x){return [x];})),"Catatan");
+    // Transaksi bulan ini
+    var txA=[["Tanggal","Layanan","Total","Pelaksana","Lokasi","Pembayaran","Status","Pelanggan"]];
+    db.transactions.filter(function(t){return monthOf(t.dateStr)===ym;}).forEach(function(t){
+      txA.push([t.dateStr,t.items.map(function(i){return i.name+" x"+i.qty;}).join("; "),t.total,
+        t.performer==="therapist"?t.therapistName:"Pemilik",t.location==="callout"?"Panggilan":"Di tempat",
+        t.payment==="cash"?"Tunai":t.payment==="transfer"?"Transfer":"Piutang",t.settled?"Lunas":"Belum",t.customer||""]);
+    });
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(txA),"Transaksi");
+    XLSX.writeFile(wb,"Laporan-Keuangan-"+ym+".xlsx");
+    announce("File Excel laporan "+namaBulan(ym)+" sedang diunduh.");
+  }catch(e){ announce("Maaf, pembuatan Excel gagal. Pastikan aplikasi sudah terbuka penuh."); }
+}
+
+/* =================== PENGATURAN =================== */
+function settingsScreen(){
+  render('<h2 class="screen-title">Pengaturan</h2>'+
+    '<button class="btn" id="svc">Layanan & harga</button>'+
+    '<button class="btn" id="th">Terapis</button>'+
+    '<button class="btn" id="fee">Biaya transport & komisi</button>'+
+    '<button class="btn" id="id">Identitas klinik</button>'+
+    '<button class="btn" id="cap">Modal & pengambilan pribadi</button>'+
+    '<button class="btn" id="as">Daftar aset</button>'+
+    '<button class="btn" id="pin">Ubah PIN</button>'+
+    '<button class="btn accent" id="bk">Cadangkan data (unduh)</button>'+
+    '<button class="btn" id="rs">Pulihkan data dari file</button>'+
+    '<input id="rsfile" type="file" accept=".json,application/json" class="visually-hidden" />'+
+    '<button class="backlink" id="back">Kembali ke menu</button>');
+  on("svc","click",svcScreen); on("th","click",thScreen); on("fee","click",feeScreen);
+  on("id","click",idScreen); on("cap","click",capScreen); on("as","click",assetScreen);
+  on("pin","click",pinScreen); on("bk","click",backup);
+  on("rs","click",function(){ el("rsfile").click(); }); on("rsfile","change",restore);
+  on("back","click",home);
+}
+function svcScreen(){
+  var list=db.services.map(function(s){return '<div class="list-item">'+esc(s.name)+' — '+rupiah(s.price)+' <button class="backlink" data-del="'+s.id+'" style="display:inline">hapus</button></div>';}).join("");
+  render('<h2 class="screen-title">Layanan & harga</h2><div class="card">'+(list||'<p class="muted">Belum ada.</p>')+'</div><label for="n">Nama layanan</label><input id="n" type="text" /><label for="p">Harga (rupiah)</label><input id="p" type="tel" inputmode="numeric" value="100000" /><button class="btn accent" id="add">Tambah</button><button class="backlink" id="back">Kembali ke pengaturan</button>');
+  on("add","click",function(){ var n=el("n").value.trim(),p=digits(el("p").value); if(!n||p<=0){announce("Isi nama & harga.");return;} db.services.push({id:uid(),name:n,price:p}); saveDB(); svcScreen(); });
+  each("[data-del]",function(b){ b.addEventListener("click",function(){ db.services=db.services.filter(function(x){return x.id!==b.getAttribute("data-del");}); saveDB(); svcScreen(); }); });
+  on("back","click",settingsScreen);
+}
+function thScreen(){
+  var list=db.therapists.map(function(t){return '<div class="list-item">'+esc(t.name)+' <button class="backlink" data-del="'+t.id+'" style="display:inline">hapus</button></div>';}).join("");
+  render('<h2 class="screen-title">Terapis</h2><div class="card">'+(list||'<p class="muted">Belum ada.</p>')+'</div><label for="n">Nama terapis</label><input id="n" type="text" /><button class="btn accent" id="add">Tambah</button><button class="backlink" id="back">Kembali ke pengaturan</button>');
+  on("add","click",function(){ var n=el("n").value.trim(); if(!n){announce("Nama belum diisi.");return;} db.therapists.push({id:uid(),name:n}); saveDB(); thScreen(); });
+  each("[data-del]",function(b){ b.addEventListener("click",function(){ db.therapists=db.therapists.filter(function(x){return x.id!==b.getAttribute("data-del");}); saveDB(); thScreen(); }); });
+  on("back","click",settingsScreen);
+}
+function feeScreen(){
+  render('<h2 class="screen-title">Biaya transport & komisi</h2><label for="tr">Biaya transport default (rupiah)</label><input id="tr" type="tel" inputmode="numeric" value="'+(db.settings.transportFee||0)+'" /><label for="cm">Komisi terapis (persen)</label><input id="cm" type="tel" inputmode="numeric" value="'+(db.settings.defaultCommission||0)+'" /><button class="btn primary big" id="ok">Simpan</button><button class="backlink" id="back">Kembali</button>');
+  on("ok","click",function(){ db.settings.transportFee=digits(el("tr").value); var c=digits(el("cm").value); db.settings.defaultCommission=c>100?100:c; saveDB(); announce("Tersimpan."); settingsScreen(); });
+  on("back","click",settingsScreen);
+}
+function idScreen(){
+  render('<h2 class="screen-title">Identitas klinik</h2><label for="nm">Nama</label><input id="nm" type="text" value="'+esc(db.settings.pantiName)+'" /><label for="ph">Telepon</label><input id="ph" type="text" value="'+esc(db.settings.phone)+'" /><label for="ad">Alamat</label><input id="ad" type="text" value="'+esc(db.settings.address)+'" /><button class="btn primary big" id="ok">Simpan</button><button class="backlink" id="back">Kembali</button>');
+  on("ok","click",function(){ db.settings.pantiName=el("nm").value.trim(); db.settings.phone=el("ph").value.trim(); db.settings.address=el("ad").value.trim(); saveDB(); announce("Tersimpan."); settingsScreen(); });
+  on("back","click",settingsScreen);
+}
+function capScreen(){
+  var list=db.capital.slice().reverse().slice(0,20).map(function(c){return '<div class="list-item">'+(c.type==="modal"?"Setor modal":"Ambil pribadi")+' — '+rupiah(c.amount)+'<br><span class="muted">'+c.dateStr+(c.note?" · "+esc(c.note):"")+'</span></div>';}).join("");
+  render('<h2 class="screen-title">Modal & pengambilan pribadi</h2><p class="help">Memisahkan uang usaha dan pribadi agar laci dan laporan akurat.</p><div class="card">'+(list||'<p class="muted">Belum ada catatan.</p>')+'</div><label for="amt">Jumlah (rupiah)</label><input id="amt" type="tel" inputmode="numeric" /><label for="note">Catatan (boleh kosong)</label><input id="note" type="text" /><button class="btn accent" id="modal">Setor modal (uang masuk usaha)</button><button class="btn" id="prive">Ambil untuk pribadi (uang keluar)</button><button class="backlink" id="back">Kembali</button>');
+  function add(type){ var a=digits(el("amt").value); if(a<=0){announce("Jumlah belum benar.");return;} db.capital.push({id:uid(),type:type,amount:a,dateStr:todayStr(),note:el("note").value.trim(),createdAt:new Date().toISOString()}); saveDB(); announce((type==="modal"?"Setoran modal ":"Pengambilan pribadi ")+terbilang(a)+" rupiah tercatat."); capScreen(); }
+  on("modal","click",function(){ add("modal"); }); on("prive","click",function(){ add("prive"); }); on("back","click",settingsScreen);
+}
+function assetScreen(){
+  var list=db.assets.map(function(a){return '<div class="list-item">'+esc(a.name)+' — '+rupiah(a.cost)+'<br><span class="muted">'+(a.acquire==="kas"?"dibeli dari kas usaha":"dari modal pribadi")+'</span> <button class="backlink" data-del="'+a.id+'" style="display:inline">hapus</button></div>';}).join("");
+  render('<h2 class="screen-title">Daftar aset</h2><p class="help">Contoh: kursi pijat, kasur, alat. Dicatat sebesar harga beli.</p><div class="card">'+(list||'<p class="muted">Belum ada aset.</p>')+'</div><label for="n">Nama aset</label><input id="n" type="text" /><label for="c">Harga perolehan (rupiah)</label><input id="c" type="tel" inputmode="numeric" /><button class="btn accent" id="kas">Tambah (dibeli dari kas usaha)</button><button class="btn" id="mod">Tambah (dari modal pribadi)</button><button class="backlink" id="back">Kembali</button>');
+  function add(ac){ var n=el("n").value.trim(),c=digits(el("c").value); if(!n||c<=0){announce("Isi nama & harga.");return;} db.assets.push({id:uid(),name:n,cost:c,acquire:ac,dateStr:todayStr(),createdAt:new Date().toISOString()}); saveDB(); announce("Aset "+n+" tercatat."); assetScreen(); }
+  on("kas","click",function(){ add("kas"); }); on("mod","click",function(){ add("modal"); });
+  each("[data-del]",function(b){ b.addEventListener("click",function(){ db.assets=db.assets.filter(function(x){return x.id!==b.getAttribute("data-del");}); saveDB(); assetScreen(); }); });
+  on("back","click",settingsScreen);
+}
+function pinScreen(){
+  render('<h2 class="screen-title">Ubah PIN</h2><label for="o">PIN lama</label><input id="o" type="tel" inputmode="numeric" /><label for="n">PIN baru (4-6 angka)</label><input id="n" type="tel" inputmode="numeric" /><button class="btn primary big" id="ok">Simpan</button><button class="backlink" id="back">Kembali</button>');
+  on("ok","click",function(){ if(el("o").value.trim()!==db.settings.ownerPin){announce("PIN lama salah.");return;} var n=el("n").value.trim(); if(!/^[0-9]{4,6}$/.test(n)){announce("PIN baru harus 4-6 angka.");return;} db.settings.ownerPin=n; saveDB(); announce("PIN diubah."); settingsScreen(); });
+  on("back","click",settingsScreen);
+}
+function backup(){ var blob=new Blob([JSON.stringify(db,null,2)],{type:"application/json"}); var u=URL.createObjectURL(blob); var a=document.createElement("a"); a.href=u; a.download="cadangan-kasir-"+todayStr()+".json"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u); announce("File cadangan diunduh. Simpan di tempat aman."); }
+function restore(ev){ var f=ev.target.files[0]; if(!f) return; var r=new FileReader(); r.onload=function(){ try{ var d=JSON.parse(r.result); if(!d.settings||!d.transactions) throw 0; db=d; saveDB(); announce("Data berhasil dipulihkan."); home(); }catch(e){ announce("File tidak dikenali. Pemulihan dibatalkan."); } }; r.readAsText(f); }
+
+/* =================== PWA =================== */
+if("serviceWorker" in navigator){ window.addEventListener("load",function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); }); }
+
+start();
+</script>
+</body>
+</html>
