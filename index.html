@@ -1353,8 +1353,7 @@ function exportContactsExcel(){
     announce("Maaf, pembuatan Excel gagal.");
   }
 }
-  on("back", "click", inventoryScreen);
-}
+
 function svcScreen(){
   var list=db.services.map(function(s){return '<div class="list-item">'+esc(s.name)+' — '+rupiah(s.price)+' <button class="backlink" data-del="'+s.id+'" style="display:inline">hapus</button></div>';}).join("");
   render('<h2 class="screen-title">Layanan & harga</h2><div class="card">'+(list||'<p class="muted">Belum ada.</p>')+'</div><label for="n">Nama layanan</label><input id="n" type="text" /><label for="p">Harga (rupiah)</label><input id="p" type="tel" inputmode="numeric" value="100000" /><button class="btn accent" id="add">Tambah</button><button class="backlink" id="back">Kembali ke pengaturan</button>');

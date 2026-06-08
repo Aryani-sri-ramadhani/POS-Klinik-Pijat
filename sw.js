@@ -1,5 +1,5 @@
 // Menyimpan aplikasi di cache agar bisa dibuka tanpa internet.
-var CACHE = "kasir-panti-v3";
+var CACHE = "kasir-panti-v4";
 var ASSETS = [
   "./",
   "./index.html",
