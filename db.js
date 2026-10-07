@@ -38,6 +38,7 @@ function blankDB() {
     capital: [],
     assets: [],
     customers: [],
+    vouchers: [],
     inventory: defaultInventory()
   };
 }
