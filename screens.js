@@ -98,12 +98,14 @@ function home() {
     '<button class="btn big" id="m5">Riwayat transaksi<span class="sub">Perbaiki atau hapus catatan</span></button>' +
     '<button class="btn big" id="m6">Laporan & Kas Usaha<span class="sub">Terkunci PIN. Laba Rugi, Neraca, & Buku Kas</span></button>' +
     '<button class="btn big" id="m8">Promosi & Marketing<span class="sub">Kirim promo WA & daftar pelanggan teraktif</span></button>' +
+    '<button class="btn big" id="m9">Voucher diskon<span class="sub">Buat & kelola voucher pelanggan</span></button>' +
     '<button class="btn big ghost" id="m7">Pengaturan<span class="sub">Terkunci PIN</span></button>'
   );
   on("m1", "click", txStart); on("m2", "click", expenseScreen); on("m3", "click", debtsScreen);
   on("m4", "click", commissionScreen); on("m5", "click", historyScreen);
   on("m6", "click", function () { requirePin(financialMenuScreen); });
   on("m8", "click", marketingScreen);
+  on("m9", "click", voucherListScreen);
   on("m7", "click", function () { requirePin(settingsScreen); });
 }
 
@@ -116,7 +118,7 @@ function requirePin(next) {
 /* =================== TRANSAKSI =================== */
 var draft = null;
 function txStart() {
-  draft = { items: [], performer: null, therapistId: null, therapistName: null, location: null, transport: 0, payment: null, customer: "", customerPhone: "" };
+  draft = { items: [], performer: null, therapistId: null, therapistName: null, location: null, transport: 0, payment: null, customer: "", customerPhone: "", voucherId: null, voucherCode: "", discountPercent: 0 };
   txPickService();
 }
 
@@ -163,7 +165,40 @@ function txQty(service) {
 function txAddMore() {
   var sub = draft.items.reduce(function (a, i) { return a + i.price * i.qty; }, 0);
   render('<h2 class="screen-title">Tambah layanan lain?</h2><p class="help">Untuk pelanggan yang sama. Sementara total ' + rupiah(sub) + '.</p><button class="btn" id="more">Ya, tambah lagi</button><button class="btn primary big" id="cont">Tidak, lanjut</button>');
-  on("more", "click", txPickService); on("cont", "click", txPerformer);
+  on("more", "click", txPickService); on("cont", "click", txVoucher);
+}
+
+function txVoucher() {
+  var applied = draft.voucherId ? '<p class="help" role="note">Voucher ' + esc(draft.voucherCode) + ' terpasang, diskon ' + draft.discountPercent + ' persen.</p>' : '';
+  render(
+    '<h2 class="screen-title">Ada voucher diskon?</h2>' + applied +
+    (draft.voucherId
+      ? '<button class="btn primary big" id="cont">Lanjut</button><button class="btn danger" id="clear">Lepas voucher</button>'
+      : '<button class="btn" id="use">Ya, masukkan kode voucher</button><button class="btn primary big" id="cont">Tidak ada, lanjut</button>') +
+    '<button class="backlink" id="back">Kembali</button>'
+  );
+  on("use", "click", txVoucherInput);
+  on("clear", "click", function () { draft.voucherId = null; draft.voucherCode = ""; draft.discountPercent = 0; announce("Voucher dilepas."); txVoucher(); });
+  on("cont", "click", txPerformer);
+  on("back", "click", txAddMore);
+}
+
+function txVoucherInput() {
+  render('<h2 class="screen-title">Masukkan kode voucher</h2><p class="help">Ketik kode yang ada di voucher pelanggan, misalnya NUS atau AJK diikuti empat huruf/angka.</p><label for="vc">Kode voucher</label><input id="vc" type="text" autocapitalize="characters" autocomplete="off" /><button class="btn primary big" id="ok">Periksa & pakai</button><button class="backlink" id="back">Kembali</button>');
+  on("ok", "click", function () {
+    var code = (el("vc").value || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (!code) { announce("Kode belum diisi."); el("vc").focus(); return; }
+    var v = findVoucher(code);
+    if (!v) { announce("Kode tidak ditemukan. Periksa kembali."); el("vc").focus(); return; }
+    var st = voucherState(v);
+    if (st === "used") { announce("Voucher ini sudah pernah dipakai."); return; }
+    if (st === "expired") { announce("Voucher ini sudah kedaluwarsa pada " + tglPanjang(v.expiryDate) + "."); return; }
+    if (st === "void") { announce("Voucher ini sudah dibatalkan."); return; }
+    draft.voucherId = v.id; draft.voucherCode = v.code; draft.discountPercent = v.percent;
+    announce("Voucher sah. Diskon " + v.percent + " persen diterapkan.");
+    txVoucher();
+  });
+  on("back", "click", txVoucher);
 }
 
 function txPerformer() {
@@ -171,7 +206,7 @@ function txPerformer() {
   render('<h2 class="screen-title">Siapa yang memijat?</h2><button class="btn primary" id="self">Saya sendiri (pemilik)<span class="sub">Pendapatan penuh ke kas</span></button>' + (db.therapists.length ? '<h3>Atau pilih terapis (bagi hasil)</h3>' + th : '<p class="help">Belum ada terapis.</p>') + '<button class="backlink" id="back">Kembali</button>');
   on("self", "click", function () { draft.performer = "owner"; draft.therapistId = null; draft.therapistName = null; txLocation(); });
   each("[data-th]", function (b) { b.addEventListener("click", function () { var t = db.therapists.filter(function (x) { return x.id === b.getAttribute("data-th"); })[0]; draft.performer = "therapist"; draft.therapistId = t.id; draft.therapistName = t.name; txLocation(); }); });
-  on("back", "click", txAddMore);
+  on("back", "click", txVoucher);
 }
 
 function txLocation() {
@@ -304,12 +339,14 @@ function txCustomerScreen() {
 
 function calc(d) {
   var jasa = d.items.reduce(function (a, i) { return a + i.price * i.qty; }, 0);
-  var total = jasa + (d.transport || 0);
+  var dpct = d.discountPercent || 0;
+  var discount = Math.round(jasa * dpct / 100); if (discount > jasa) discount = jasa;
+  var total = jasa - discount + (d.transport || 0);
   var pct = d.performer === "therapist" ? (db.settings.defaultCommission || 0) : 0;
-  var komisi = Math.round(jasa * pct / 100);
+  var komisi = Math.round(jasa * pct / 100); // komisi dihitung dari harga normal (diskon ditanggung klinik)
   var trToTh = (d.performer === "therapist" && d.location === "callout") ? (d.transport || 0) : 0;
   var take = komisi + trToTh;
-  return { jasa: jasa, total: total, pct: pct, therapistTake: take, kasShare: total - take };
+  return { jasa: jasa, discount: discount, discountPercent: dpct, total: total, pct: pct, therapistTake: take, kasShare: total - take };
 }
 
 function txConfirm() {
@@ -320,7 +357,8 @@ function txConfirm() {
   var pay = draft.payment === "cash" ? "Tunai" : draft.payment === "transfer" ? "Transfer/QRIS" : "Belum bayar (piutang)";
   var bagi = draft.performer === "therapist" ? '<p>Hak terapis (saat lunas): ' + rupiah(c.therapistTake) + '<br>Hak kas/Pertuni: ' + rupiah(c.kasShare) + '</p>' : '';
   var custInfo = draft.customer ? '<br>Pelanggan: ' + esc(draft.customer) + (draft.customerPhone ? ' (' + esc(draft.customerPhone) + ')' : '') : '';
-  
+  var disc = c.discount > 0 ? '<p>Subtotal jasa: ' + rupiah(c.jasa) + '<br>Diskon voucher ' + esc(draft.voucherCode) + ' (' + c.discountPercent + '%): −' + rupiah(c.discount) + '</p>' : '';
+
   var payCommCheckbox = '';
   if (draft.performer === "therapist" && draft.payment !== "unpaid" && c.therapistTake > 0) {
     payCommCheckbox = '<label style="display:flex; align-items:center; gap:12px; margin-top:14px; font-weight:700; cursor:pointer;">' +
@@ -329,7 +367,7 @@ function txConfirm() {
     '</label>';
   }
 
-  render('<h2 class="screen-title">Periksa & simpan</h2><div class="card"><p>' + items + '</p><p>Pelaksana: ' + who + '<br>Lokasi: ' + loc + '<br>Pembayaran: ' + pay + custInfo + '</p>' + bagi + payCommCheckbox + '<p class="total">Total: ' + rupiah(c.total) + '</p></div><button class="btn primary big" id="save">Simpan transaksi</button><button class="backlink" id="back">Kembali</button>');
+  render('<h2 class="screen-title">Periksa & simpan</h2><div class="card"><p>' + items + '</p>' + disc + '<p>Pelaksana: ' + who + '<br>Lokasi: ' + loc + '<br>Pembayaran: ' + pay + custInfo + '</p>' + bagi + payCommCheckbox + '<p class="total">Total: ' + rupiah(c.total) + '</p></div><button class="btn primary big" id="save">Simpan transaksi</button><button class="backlink" id="back">Kembali</button>');
   announce("Total " + terbilang(c.total) + " rupiah. Tekan simpan untuk menyimpan.");
   on("save", "click", saveTx); on("back", "click", txCustomerScreen);
 }
@@ -342,7 +380,8 @@ function saveTx() {
 
   var tx = {
     id: uid(), createdAt: new Date().toISOString(), dateStr: todayStr(), items: draft.items.slice(),
-    jasa: c.jasa, transport: draft.transport || 0, total: c.total, performer: draft.performer,
+    jasa: c.jasa, discount: c.discount, discountPercent: c.discountPercent, voucherCode: draft.voucherCode || "",
+    transport: draft.transport || 0, total: c.total, performer: draft.performer,
     therapistId: draft.therapistId, therapistName: draft.therapistName, location: draft.location,
     payment: draft.payment, customer: draft.customer || "", customerPhone: draft.customerPhone || "", commissionPercent: c.pct,
     therapistTake: c.therapistTake, kasShare: c.kasShare,
@@ -372,13 +411,36 @@ function saveTx() {
     });
   }
 
+  // Pakai voucher bila ada: tandai terpakai, dan untuk voucher ajak teman, buatkan voucher hadiah bagi perekomendasi.
+  if (draft.voucherId) {
+    var usedV = findVoucherById(draft.voucherId);
+    if (usedV) {
+      usedV.status = "used"; usedV.usedDate = todayStr(); usedV.usedTxId = tx.id;
+      if (usedV.kind === "referral") {
+        var reward = createRewardVoucher(usedV);
+        tx.rewardVoucherId = reward.id;
+      }
+    }
+  }
+
   db.transactions.push(tx); saveDB(); txSaved(tx);
 }
 
 function txSaved(tx) {
-  render('<h2 class="screen-title">Transaksi tersimpan</h2><div class="card"><p class="total">' + rupiah(tx.total) + '</p><p class="muted">Untuk memperbaiki, buka Riwayat transaksi di menu utama.</p></div><button class="btn accent" id="wa">Kirim struk ke WhatsApp</button><button class="btn primary big" id="home">Selesai, ke menu utama</button>');
-  announce("Transaksi tersimpan, total " + terbilang(tx.total) + " rupiah.");
+  var rewardBtn = tx.rewardVoucherId
+    ? '<button class="btn primary" id="reward">Kirim voucher hadiah untuk ' + esc((findVoucherById(tx.rewardVoucherId) || {}).referrerName || "perekomendasi") + '<span class="sub">Teman memakai voucher ajak teman</span></button>'
+    : '';
+  render('<h2 class="screen-title">Transaksi tersimpan</h2><div class="card"><p class="total">' + rupiah(tx.total) + '</p><p class="muted">Untuk memperbaiki, buka Riwayat transaksi di menu utama.</p></div>' +
+    '<button class="btn accent" id="wa">Kirim struk ke WhatsApp</button>' +
+    rewardBtn +
+    '<button class="btn" id="vc">Buat voucher kunjungan berikutnya<span class="sub">Diskon ' + VOUCHER_RETURN_PCT + '%, berlaku ' + VOUCHER_RETURN_DAYS + ' hari</span></button>' +
+    '<button class="btn" id="vr">Buat voucher ajak teman<span class="sub">Diskon ' + VOUCHER_REFERRAL_PCT + '% untuk teman & perekomendasi</span></button>' +
+    '<button class="btn primary big" id="home">Selesai, ke menu utama</button>');
+  announce("Transaksi tersimpan, total " + terbilang(tx.total) + " rupiah." + (tx.rewardVoucherId ? " Voucher hadiah untuk perekomendasi sudah dibuat." : ""));
   on("wa", "click", function () { sendReceipt(tx); });
+  on("reward", "click", function () { var r = findVoucherById(tx.rewardVoucherId); if (r) voucherShow(r, function () { txSaved(tx); }); });
+  on("vc", "click", function () { var v = createReturnVoucher(tx); voucherShow(v, function () { txSaved(tx); }); });
+  on("vr", "click", function () { referralCreate(tx.customer || "", tx.customerPhone || "", function () { txSaved(tx); }); });
   on("home", "click", home);
 }
 
@@ -391,6 +453,7 @@ function sendReceipt(tx) {
   if (tx.customerPhone) L.push("No WA: " + tx.customerPhone);
   L.push("--------------------");
   tx.items.forEach(function (i) { L.push(i.name + " x" + i.qty + "  " + rupiah(i.price * i.qty)); });
+  if (tx.discount > 0) L.push("Diskon" + (tx.voucherCode ? " (" + tx.voucherCode + ")" : "") + "  −" + rupiah(tx.discount));
   if (tx.transport) L.push("Transport  " + rupiah(tx.transport));
   L.push("--------------------", "*TOTAL: " + rupiah(tx.total) + "*");
   L.push("Pembayaran: " + (tx.payment === "cash" ? "Tunai" : tx.payment === "transfer" ? "Transfer/QRIS" : "Belum bayar"));
@@ -625,14 +688,15 @@ function confirmDelete(id) {
 function labaRugi(ym) {
   var tx = db.transactions.filter(function (t) { return monthOf(t.dateStr) === ym; });
   var jasa = tx.reduce(function (a, t) { return a + t.jasa; }, 0);
+  var diskon = tx.reduce(function (a, t) { return a + (t.discount || 0); }, 0);
   var transport = tx.reduce(function (a, t) { return a + (t.transport || 0); }, 0);
-  var pendapatan = jasa + transport;
+  var pendapatan = jasa - diskon + transport;
   var komisi = db.transactions.filter(function (t) { return t.settled && monthOf(t.settledDate) === ym; }).reduce(function (a, t) { return a + (t.therapistTake || 0); }, 0);
   var exp = db.expenses.filter(function (e) { return monthOf(e.dateStr) === ym; });
   var bebanCat = {}; exp.forEach(function (e) { bebanCat[e.category] = (bebanCat[e.category] || 0) + e.amount; });
   var bebanLain = exp.reduce(function (a, e) { return a + e.amount; }, 0);
   var totalBeban = komisi + bebanLain;
-  return { ym: ym, jasa: jasa, transport: transport, pendapatan: pendapatan, komisi: komisi, bebanCat: bebanCat, bebanLain: bebanLain, totalBeban: totalBeban, laba: pendapatan - totalBeban, count: tx.length };
+  return { ym: ym, jasa: jasa, diskon: diskon, transport: transport, pendapatan: pendapatan, komisi: komisi, bebanCat: bebanCat, bebanLain: bebanLain, totalBeban: totalBeban, laba: pendapatan - totalBeban, count: tx.length };
 }
 
 function neraca() {
@@ -669,9 +733,10 @@ function drawReport(ym) {
     '<h2 class="screen-title">Laporan keuangan</h2>' +
     '<div class="row" style="margin-bottom:12px"><button class="btn" id="prev">Bulan sebelumnya</button><button class="btn" id="next">Berikutnya</button></div>' +
     '<div class="card ledger"><p class="muted">Laporan Laba Rugi — ' + namaBulan(ym) + '</p>' +
-      '<div class="ln"><span>Pendapatan jasa</span><span>' + rupiah(lr.jasa) + '</span></div>' +
+      '<div class="ln"><span>Pendapatan jasa (bruto)</span><span>' + rupiah(lr.jasa) + '</span></div>' +
+      (lr.diskon > 0 ? '<div class="ln"><span>Diskon voucher/promosi</span><span>−' + rupiah(lr.diskon) + '</span></div>' : '') +
       '<div class="ln"><span>Pendapatan transport</span><span>' + rupiah(lr.transport) + '</span></div>' +
-      '<div class="ln totline"><span>Total pendapatan</span><span>' + rupiah(lr.pendapatan) + '</span></div>' +
+      '<div class="ln totline"><span>Pendapatan bersih</span><span>' + rupiah(lr.pendapatan) + '</span></div>' +
       '<div class="ln" style="margin-top:8px"><span>Beban komisi terapis</span><span>' + rupiah(lr.komisi) + '</span></div>' +
       bebanRows +
       '<div class="ln totline"><span>Total beban</span><span>' + rupiah(lr.totalBeban) + '</span></div>' +
@@ -714,7 +779,8 @@ function calkLines() {
     "3. Pendapatan diakui pada saat jasa diberikan kepada pelanggan.",
     "4. Komisi terapis diakui sebagai beban pada saat pembayaran diterima dari pelanggan.",
     "5. Aset tetap dicatat sebesar harga perolehan. Penyusutan belum diterapkan pada laporan ini.",
-    "6. Piutang usaha merupakan transaksi yang jasanya telah diberikan namun belum dibayar pelanggan."
+    "6. Piutang usaha merupakan transaksi yang jasanya telah diberikan namun belum dibayar pelanggan.",
+    "7. Diskon voucher diperlakukan sebagai pengurang pendapatan (biaya promosi) dan tidak mengurangi hak komisi terapis."
   ];
 }
 
@@ -733,7 +799,7 @@ function exportExcel(ym) {
     
     // Laba Rugi
     var lrA = head.concat([["LAPORAN LABA RUGI"], ["Periode", namaBulan(ym)], [],
-      ["Pendapatan jasa", lr.jasa], ["Pendapatan transport", lr.transport], ["Total pendapatan", lr.pendapatan], [],
+      ["Pendapatan jasa (bruto)", lr.jasa], ["Diskon voucher/promosi", -lr.diskon], ["Pendapatan transport", lr.transport], ["Pendapatan bersih", lr.pendapatan], [],
       ["Beban komisi terapis", lr.komisi]]);
     Object.keys(lr.bebanCat).forEach(function (k) { lrA.push(["Beban " + k, lr.bebanCat[k]]); });
     lrA.push(["Total beban", lr.totalBeban], [], ["LABA BERSIH", lr.laba]);
@@ -751,9 +817,9 @@ function exportExcel(ym) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(calkLines().map(function (x) { return [x]; })), "Catatan");
     
     // Transaksi bulan ini
-    var txA = [["Tanggal", "Layanan", "Total", "Pelaksana", "Lokasi", "Pembayaran", "Status", "Pelanggan", "No WhatsApp"]];
+    var txA = [["Tanggal", "Layanan", "Jasa (bruto)", "Diskon", "Voucher", "Total", "Pelaksana", "Lokasi", "Pembayaran", "Status", "Pelanggan", "No WhatsApp"]];
     db.transactions.filter(function (t) { return monthOf(t.dateStr) === ym; }).forEach(function (t) {
-      txA.push([t.dateStr, t.items.map(function (i) { return i.name + " x" + i.qty; }).join("; "), t.total,
+      txA.push([t.dateStr, t.items.map(function (i) { return i.name + " x" + i.qty; }).join("; "), t.jasa, t.discount || 0, t.voucherCode || "", t.total,
         t.performer === "therapist" ? t.therapistName : "Pemilik", t.location === "callout" ? "Panggilan" : "Di tempat",
         t.payment === "cash" ? "Tunai" : t.payment === "transfer" ? "Transfer" : "Piutang", t.settled ? "Lunas" : "Belum", t.customer || "", t.customerPhone || ""]);
     });
@@ -1304,6 +1370,9 @@ function restore(ev) {
     try {
       var d = JSON.parse(r.result);
       if (!d.settings || !d.transactions) throw 0;
+      var b = blankDB();
+      for (var k in b) { if (!(k in d)) d[k] = b[k]; }
+      for (var s in b.settings) { if (!(s in d.settings)) d.settings[s] = b.settings[s]; }
       db = d;
       saveDB();
       announce("Data berhasil dipulihkan.");
@@ -1313,4 +1382,183 @@ function restore(ev) {
     }
   };
   r.readAsText(f);
+}
+
+/* =================== VOUCHER =================== */
+var VOUCHER_RETURN_PCT = 20, VOUCHER_RETURN_DAYS = 7;
+var VOUCHER_REFERRAL_PCT = 20, VOUCHER_REFERRAL_DAYS = 10;
+
+function genVoucherCode(prefix) {
+  prefix = prefix || "NUS";
+  var alf = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // tanpa huruf/angka yang mudah tertukar
+  for (var tries = 0; tries < 50; tries++) {
+    var s = "";
+    for (var i = 0; i < 4; i++) s += alf.charAt(Math.floor(Math.random() * alf.length));
+    var code = prefix + "-" + s;
+    if (!findVoucher(code)) return code;
+  }
+  return prefix + "-" + Date.now().toString(36).toUpperCase().slice(-4);
+}
+
+function findVoucher(code) {
+  code = (code || "").toUpperCase();
+  return (db.vouchers || []).filter(function (v) { return v.code === code; })[0] || null;
+}
+
+function findVoucherById(id) {
+  return (db.vouchers || []).filter(function (v) { return v.id === id; })[0] || null;
+}
+
+function voucherState(v) {
+  if (v.status === "used") return "used";
+  if (v.status === "void") return "void";
+  if (todayStr() > v.expiryDate) return "expired";
+  return "active";
+}
+
+function ejaKode(code) {
+  return code.split("").map(function (ch) { return ch === "-" ? "strip" : ch; }).join(" ");
+}
+
+function createReturnVoucher(tx) {
+  if (!db.vouchers) db.vouchers = [];
+  var v = {
+    id: uid(), code: genVoucherCode("NUS"), kind: "return", percent: VOUCHER_RETURN_PCT, status: "active",
+    createdDate: todayStr(), expiryDate: addDays(todayStr(), VOUCHER_RETURN_DAYS),
+    usedDate: null, usedTxId: null, sourceTxId: tx ? tx.id : null,
+    customer: tx ? (tx.customer || "") : "", customerPhone: tx ? (tx.customerPhone || "") : ""
+  };
+  db.vouchers.push(v); saveDB();
+  announce("Voucher dibuat. Kode " + ejaKode(v.code) + ". Diskon " + v.percent + " persen, berlaku sampai " + tglPanjang(v.expiryDate) + ".");
+  return v;
+}
+
+function createReferralVoucher(referrerName, referrerPhone) {
+  if (!db.vouchers) db.vouchers = [];
+  var v = {
+    id: uid(), code: genVoucherCode("AJK"), kind: "referral", percent: VOUCHER_REFERRAL_PCT, status: "active",
+    createdDate: todayStr(), expiryDate: addDays(todayStr(), VOUCHER_REFERRAL_DAYS),
+    usedDate: null, usedTxId: null, referrerName: referrerName || "", referrerPhone: referrerPhone || "", customer: ""
+  };
+  db.vouchers.push(v); saveDB();
+  announce("Voucher ajak teman dibuat. Kode " + ejaKode(v.code) + ". Berlaku sampai " + tglPanjang(v.expiryDate) + ".");
+  return v;
+}
+
+function createRewardVoucher(ref) {
+  if (!db.vouchers) db.vouchers = [];
+  var v = {
+    id: uid(), code: genVoucherCode("NUS"), kind: "referral_reward", percent: VOUCHER_REFERRAL_PCT, status: "active",
+    createdDate: todayStr(), expiryDate: addDays(todayStr(), VOUCHER_REFERRAL_DAYS),
+    usedDate: null, usedTxId: null, parentVoucherId: ref.id,
+    referrerName: ref.referrerName || "", referrerPhone: ref.referrerPhone || "", customer: ref.referrerName || ""
+  };
+  db.vouchers.push(v); saveDB();
+  return v;
+}
+
+function qrSvg(text) {
+  try {
+    if (typeof qrcode === "undefined") return "";
+    var qr = qrcode(0, "M");
+    qr.addData(text);
+    qr.make();
+    return qr.createSvgTag({ cellSize: 5, margin: 2, scalable: true });
+  } catch (e) { return ""; }
+}
+
+function voucherKindLabel(v) {
+  return v.kind === "referral" ? "Voucher ajak teman" : v.kind === "referral_reward" ? "Voucher hadiah (ajak teman)" : "Voucher kunjungan berikutnya";
+}
+
+function referralCreate(prefName, prefPhone, backFn) {
+  render(
+    '<h2 class="screen-title">Voucher ajak teman</h2>' +
+    '<p class="help">Kode ini diberikan ke pelanggan untuk dibagikan ke temannya. Saat temannya datang dan memakai kode, teman dapat diskon ' + VOUCHER_REFERRAL_PCT + '%, dan si perekomendasi mendapat voucher ' + VOUCHER_REFERRAL_PCT + '% untuk kunjungan berikutnya.</p>' +
+    '<label for="rn">Nama perekomendasi (yang mengajak)</label>' +
+    '<input id="rn" type="text" value="' + esc(prefName || "") + '" />' +
+    '<label for="rp">Nomor WhatsApp perekomendasi (boleh kosong)</label>' +
+    '<input id="rp" type="tel" inputmode="numeric" value="' + esc(prefPhone || "") + '" placeholder="contoh: 0812..." />' +
+    '<button class="btn primary big" id="ok">Buat voucher</button>' +
+    '<button class="backlink" id="back">Kembali</button>'
+  );
+  on("ok", "click", function () {
+    var nm = el("rn").value.trim();
+    if (!nm) { announce("Nama perekomendasi belum diisi."); el("rn").focus(); return; }
+    var v = createReferralVoucher(nm, el("rp").value.trim());
+    voucherShow(v, backFn);
+  });
+  on("back", "click", function () { (backFn || home)(); });
+}
+
+function voucherShow(v, backFn) {
+  var svg = qrSvg(v.code);
+  var qrBlock = svg
+    ? '<div aria-hidden="true" style="max-width:240px;margin:12px auto;background:#fff;padding:10px;border-radius:12px">' + svg + '</div>'
+    : '<p class="muted">(Kode QR tidak tersedia di perangkat ini, gunakan kode di atas.)</p>';
+  var expl = v.kind === "referral"
+    ? 'Bagikan kode ini ke teman. Saat teman memakainya, teman dapat diskon, dan ' + esc(v.referrerName || "perekomendasi") + ' mendapat voucher hadiah.'
+    : v.kind === "referral_reward"
+    ? 'Hadiah untuk ' + esc(v.referrerName || "perekomendasi") + ' karena mengajak teman. Berlaku untuk kunjungan berikutnya.'
+    : 'Pelanggan bisa menyebut kode ini saat kunjungan berikutnya, atau memindai QR-nya.';
+  render(
+    '<h2 class="screen-title">' + voucherKindLabel(v) + '</h2>' +
+    '<div class="card" style="text-align:center">' +
+      '<p class="muted">Kode voucher</p>' +
+      '<p class="total" style="letter-spacing:2px">' + esc(v.code) + '</p>' +
+      '<p>Diskon ' + v.percent + '% · berlaku sampai ' + tglPanjang(v.expiryDate) + '</p>' +
+      qrBlock +
+      '<p class="muted">' + expl + '</p>' +
+    '</div>' +
+    '<button class="btn accent big" id="wa" style="text-align:center;">Kirim voucher ke WhatsApp</button>' +
+    '<button class="btn primary" id="done" style="text-align:center;">Selesai</button>'
+  );
+  on("wa", "click", function () { voucherWA(v); });
+  on("done", "click", function () { (backFn || home)(); });
+}
+
+function voucherWA(v) {
+  var L = ["*" + voucherKindLabel(v) + " — " + (db.settings.pantiName || "Klinik Pijat") + "*", ""];
+  L.push("Kode: *" + v.code + "*");
+  L.push("Diskon: " + v.percent + "%");
+  L.push("Berlaku sampai: " + tglPanjang(v.expiryDate));
+  L.push("");
+  if (v.kind === "referral") {
+    L.push("Bagikan kode ini ke teman Anda. Saat teman berkunjung dan memakai kode ini, teman mendapat diskon " + v.percent + "%, dan Anda mendapat voucher " + v.percent + "% untuk kunjungan berikutnya. Berlaku satu kali.");
+  } else {
+    L.push("Tunjukkan atau sebutkan kode ini saat Anda datang kembali. Berlaku untuk satu kali kunjungan.");
+  }
+  if (db.settings.address) L.push("", db.settings.address);
+  if (db.settings.phone) L.push("Telp: " + db.settings.phone);
+  var num = (v.kind === "referral" || v.kind === "referral_reward") ? cleanPhone(v.referrerPhone) : "";
+  window.open("https://wa.me/" + num + "?text=" + encodeURIComponent(L.join("\n")), "_blank");
+}
+
+function voucherListScreen() {
+  var active = (db.vouchers || []).filter(function (v) { return voucherState(v) === "active"; });
+  var others = (db.vouchers || []).filter(function (v) { return voucherState(v) !== "active"; }).slice().reverse().slice(0, 30);
+
+  function row(v) {
+    var st = voucherState(v);
+    var label = st === "active" ? "aktif, berlaku sampai " + tglPanjang(v.expiryDate)
+      : st === "used" ? "sudah dipakai" + (v.usedDate ? " (" + v.usedDate + ")" : "")
+      : st === "expired" ? "kedaluwarsa " + tglPanjang(v.expiryDate) : "dibatalkan";
+    var who = (v.kind === "referral" || v.kind === "referral_reward") ? (v.referrerName || "") : (v.customer || "");
+    return '<div class="list-item"><strong style="letter-spacing:1px">' + esc(v.code) + '</strong> — diskon ' + v.percent + '%<br><span class="muted">' + voucherKindLabel(v) + ' · ' + label + (who ? " · " + esc(who) : "") + '</span>' +
+      (st === "active" ? '<br><button class="btn" data-show="' + v.id + '" style="margin-top:8px">Lihat / kirim</button><button class="btn danger" data-void="' + v.id + '">Batalkan voucher</button>' : '') + '</div>';
+  }
+
+  render(
+    '<h2 class="screen-title">Daftar voucher</h2>' +
+    '<button class="btn accent" id="new" style="text-align:center;">Buat voucher kunjungan berikutnya<span class="sub">Diskon ' + VOUCHER_RETURN_PCT + '%, berlaku ' + VOUCHER_RETURN_DAYS + ' hari</span></button>' +
+    '<button class="btn accent" id="newref" style="text-align:center;">Buat voucher ajak teman<span class="sub">Diskon ' + VOUCHER_REFERRAL_PCT + '% untuk teman & perekomendasi</span></button>' +
+    '<h3>Voucher aktif (' + active.length + ')</h3>' + (active.length ? active.map(row).join("") : '<p class="muted">Belum ada voucher aktif.</p>') +
+    (others.length ? '<h3>Riwayat voucher</h3>' + others.map(row).join("") : '') +
+    '<button class="backlink" id="back">Kembali ke menu</button>'
+  );
+  on("new", "click", function () { var v = createReturnVoucher(null); voucherShow(v, voucherListScreen); });
+  on("newref", "click", function () { referralCreate("", "", voucherListScreen); });
+  each("[data-show]", function (b) { b.addEventListener("click", function () { var v = findVoucherById(b.getAttribute("data-show")); if (v) voucherShow(v, voucherListScreen); }); });
+  each("[data-void]", function (b) { b.addEventListener("click", function () { var v = findVoucherById(b.getAttribute("data-void")); if (v) { v.status = "void"; saveDB(); announce("Voucher " + v.code + " dibatalkan."); voucherListScreen(); } }); });
+  on("back", "click", home);
 }

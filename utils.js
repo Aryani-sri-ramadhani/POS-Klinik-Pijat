@@ -35,6 +35,13 @@ function tglPanjang(s) {
   return parseInt(p[2], 10) + " " + b[parseInt(p[1], 10) - 1] + " " + p[0];
 }
 
+function addDays(s, n) {
+  var p = s.split("-");
+  var d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
+
 function cleanPhone(num) {
   num = String(num || "").replace(/\D/g, "");
   if (num.startsWith("0")) {
@@ -98,21 +105,28 @@ function setHeader() {
 
 function render(html) {
   if (!app) app = document.getElementById("app");
-  
-  // Apply fade-out and fade-in transition
+
+  // Isi layar dipasang serentak (sinkron) supaya tombol bisa langsung diberi
+  // perintah. Transisi halus dilakukan lewat opacity setelahnya, tanpa menunda
+  // tampilnya elemen — kalau ditunda, perintah tombol terpasang sebelum tombolnya
+  // ada, sehingga tombol tidak merespons.
+  app.innerHTML = html;
+  setHeader();
+
+  // Accessibility focus management
+  var t = app.querySelector(".screen-title");
+  if (t) {
+    t.setAttribute("tabindex", "-1");
+    t.focus();
+  }
+
+  // Fade-in halus
   app.style.opacity = 0;
-  setTimeout(function () {
-    app.innerHTML = html;
-    setHeader();
-    
-    // Accessibility focus management
-    var t = app.querySelector(".screen-title");
-    if (t) {
-      t.setAttribute("tabindex", "-1");
-      t.focus();
-    }
-    app.style.opacity = 1;
-  }, 100);
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      app.style.opacity = 1;
+    });
+  });
 }
 
 function el(id) {
