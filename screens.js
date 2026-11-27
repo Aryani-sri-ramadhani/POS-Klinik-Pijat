@@ -38,7 +38,7 @@ function setupIdentity() {
     '<button class="backlink" id="back">Kembali</button>'
   );
   on("next", "click", function () { db.settings.phone = el("ph").value.trim(); db.settings.address = el("ad").value.trim(); saveDB(); setupTherapists(); });
-  on("back", "click", setupName);
+  onBack("back", setupName);
 }
 
 function setupTherapists() {
@@ -62,11 +62,15 @@ function home() {
   var pend = db.transactions.filter(function (t) { return !t.settled; });
   var note = pend.length ? '<p class="help" role="note">Pengingat: ' + pend.length + ' transaksi belum lunas.</p>' : '';
   
+  var usedIds = {};
+  db.services.forEach(function (s) { if (s.recipe && s.recipe.itemId) usedIds[s.recipe.itemId] = true; });
   var lowStockItems = (db.inventory || []).filter(function (i) {
-    return i.currentStock <= i.minStockAlert;
+    var relevant = usedIds[i.id] || i.currentStock > 0; // barang baru yang belum diisi & belum dipakai tidak dinag
+    return relevant && i.minStockAlert > 0 && i.currentStock <= i.minStockAlert;
   });
   var stockNotes = lowStockItems.map(function (i) {
-    return '<p class="help" style="color:var(--warn); font-weight:bold;" role="alert">⚠️ Peringatan: Stok ' + esc(i.name) + ' hampir habis (' + i.currentStock + ' ' + esc(i.unit) + ' tersisa)!</p>';
+    var word = i.currentStock <= 0 ? "habis" : "hampir habis";
+    return '<p class="help" style="color:var(--warn); font-weight:bold;" role="alert">⚠️ Stok ' + esc(i.name) + ' ' + word + ' (' + i.currentStock + ' ' + esc(i.unit) + ' tersisa).</p>';
   }).join("");
 
   var today = todayStr();
@@ -112,7 +116,7 @@ function home() {
 function requirePin(next) {
   render('<h2 class="screen-title">Masukkan PIN pemilik</h2><label for="p">PIN</label><input id="p" type="tel" inputmode="numeric" /><button class="btn primary big" id="ok">Buka</button><button class="backlink" id="b">Kembali ke menu</button>');
   on("ok", "click", function () { if (el("p").value.trim() === db.settings.ownerPin) next(); else { announce("PIN salah."); el("p").value = ""; el("p").focus(); } });
-  on("b", "click", home);
+  onBack("b", home);
 }
 
 /* =================== TRANSAKSI =================== */
@@ -127,7 +131,7 @@ function txPickService() {
   var cart = draft.items.length ? '<p class="help" role="note">Sudah dipilih: ' + draft.items.map(function (i) { return esc(i.name) + " ×" + i.qty; }).join(", ") + '.</p>' : '';
   render('<h2 class="screen-title">Pilih layanan</h2>' + cart + btns + '<button class="backlink" id="cancel">Batal & kembali ke menu</button>');
   each("[data-id]", function (b) { b.addEventListener("click", function () { var s = db.services.filter(function (x) { return x.id === b.getAttribute("data-id"); })[0]; txQty(s); }); });
-  on("cancel", "click", home);
+  onBack("cancel", home);
 }
 
 function txQty(service) {
@@ -156,7 +160,7 @@ function txQty(service) {
       draft.items.push({ serviceId: service.id, name: service.name, price: st.price, qty: st.qty });
       txAddMore();
     });
-    on("back", "click", txPickService);
+    onBack("back", txPickService);
   }
   function sync() { el("qn").textContent = st.qty; el("tt").textContent = "Total: " + rupiah(st.price * st.qty); announce("Jumlah " + terbilang(st.qty) + ". Total " + terbilang(st.price * st.qty) + " rupiah."); }
   draw();
@@ -180,7 +184,7 @@ function txVoucher() {
   on("use", "click", txVoucherInput);
   on("clear", "click", function () { draft.voucherId = null; draft.voucherCode = ""; draft.discountPercent = 0; announce("Voucher dilepas."); txVoucher(); });
   on("cont", "click", txPerformer);
-  on("back", "click", txAddMore);
+  onBack("back", txAddMore);
 }
 
 function txVoucherInput() {
@@ -198,7 +202,7 @@ function txVoucherInput() {
     announce("Voucher sah. Diskon " + v.percent + " persen diterapkan.");
     txVoucher();
   });
-  on("back", "click", txVoucher);
+  onBack("back", txVoucher);
 }
 
 function txPerformer() {
@@ -206,20 +210,20 @@ function txPerformer() {
   render('<h2 class="screen-title">Siapa yang memijat?</h2><button class="btn primary" id="self">Saya sendiri (pemilik)<span class="sub">Pendapatan penuh ke kas</span></button>' + (db.therapists.length ? '<h3>Atau pilih terapis (bagi hasil)</h3>' + th : '<p class="help">Belum ada terapis.</p>') + '<button class="backlink" id="back">Kembali</button>');
   on("self", "click", function () { draft.performer = "owner"; draft.therapistId = null; draft.therapistName = null; txLocation(); });
   each("[data-th]", function (b) { b.addEventListener("click", function () { var t = db.therapists.filter(function (x) { return x.id === b.getAttribute("data-th"); })[0]; draft.performer = "therapist"; draft.therapistId = t.id; draft.therapistName = t.name; txLocation(); }); });
-  on("back", "click", txVoucher);
+  onBack("back", txVoucher);
 }
 
 function txLocation() {
   render('<h2 class="screen-title">Di mana layanannya?</h2><button class="btn primary" id="on">Di tempat (klinik)<span class="sub">Harga normal</span></button><button class="btn" id="call">Panggilan ke rumah<span class="sub">Tambah biaya transport</span></button><button class="backlink" id="back">Kembali</button>');
   on("on", "click", function () { draft.location = "onsite"; draft.transport = 0; txPayment(); });
   on("call", "click", function () { draft.location = "callout"; txTransport(); });
-  on("back", "click", txPerformer);
+  onBack("back", txPerformer);
 }
 
 function txTransport() {
   render('<h2 class="screen-title">Biaya transport</h2><p class="help">Diberikan penuh ke yang berangkat, tidak dibagi.</p><label for="tr">Jumlah (rupiah)</label><input id="tr" type="tel" inputmode="numeric" value="' + (db.settings.transportFee || 0) + '" /><button class="btn primary big" id="ok">Pakai biaya ini</button><button class="backlink" id="back">Kembali</button>');
   on("ok", "click", function () { draft.transport = digits(el("tr").value); txPayment(); });
-  on("back", "click", txLocation);
+  onBack("back", txLocation);
 }
 
 function txPayment() {
@@ -227,7 +231,7 @@ function txPayment() {
   on("cash", "click", function () { draft.payment = "cash"; txCustomerScreen(); });
   on("tf", "click", function () { draft.payment = "transfer"; txCustomerScreen(); });
   on("up", "click", function () { draft.payment = "unpaid"; txCustomerScreen(); });
-  on("back", "click", function () { draft.location === "callout" ? txTransport() : txLocation(); });
+  onBack("back", function () { draft.location === "callout" ? txTransport() : txLocation(); });
 }
 
 function txCustomerScreen() {
@@ -332,7 +336,7 @@ function txCustomerScreen() {
       });
     }
     
-    on("back", "click", txPayment);
+    onBack("back", txPayment);
   }
   draw("");
 }
@@ -369,7 +373,7 @@ function txConfirm() {
 
   render('<h2 class="screen-title">Periksa & simpan</h2><div class="card"><p>' + items + '</p>' + disc + '<p>Pelaksana: ' + who + '<br>Lokasi: ' + loc + '<br>Pembayaran: ' + pay + custInfo + '</p>' + bagi + payCommCheckbox + '<p class="total">Total: ' + rupiah(c.total) + '</p></div><button class="btn primary big" id="save">Simpan transaksi</button><button class="backlink" id="back">Kembali</button>');
   announce("Total " + terbilang(c.total) + " rupiah. Tekan simpan untuk menyimpan.");
-  on("save", "click", saveTx); on("back", "click", txCustomerScreen);
+  on("save", "click", saveTx); onBack("back", txCustomerScreen);
 }
 
 function saveTx() {
@@ -432,6 +436,7 @@ function txSaved(tx) {
     : '';
   render('<h2 class="screen-title">Transaksi tersimpan</h2><div class="card"><p class="total">' + rupiah(tx.total) + '</p><p class="muted">Untuk memperbaiki, buka Riwayat transaksi di menu utama.</p></div>' +
     '<button class="btn accent" id="wa">Kirim struk ke WhatsApp</button>' +
+    '<button class="btn" id="print">Cetak struk (printer/PDF)<span class="sub">Untuk printer Bluetooth, PDF, atau printer biasa</span></button>' +
     rewardBtn +
     '<button class="btn" id="vc">Buat voucher kunjungan berikutnya<span class="sub">Diskon ' + VOUCHER_RETURN_PCT + '%, berlaku ' + VOUCHER_RETURN_DAYS + ' hari</span></button>' +
     '<button class="btn" id="vr">Buat voucher ajak teman<span class="sub">Diskon ' + VOUCHER_REFERRAL_PCT + '% untuk teman & perekomendasi</span></button>' +
@@ -441,7 +446,9 @@ function txSaved(tx) {
   on("reward", "click", function () { var r = findVoucherById(tx.rewardVoucherId); if (r) voucherShow(r, function () { txSaved(tx); }); });
   on("vc", "click", function () { var v = createReturnVoucher(tx); voucherShow(v, function () { txSaved(tx); }); });
   on("vr", "click", function () { referralCreate(tx.customer || "", tx.customerPhone || "", function () { txSaved(tx); }); });
+  on("print", "click", function () { printReceipt(tx); });
   on("home", "click", home);
+  backFn = home;
 }
 
 function sendReceipt(tx) {
@@ -462,12 +469,45 @@ function sendReceipt(tx) {
   window.open("https://wa.me/" + phone + "?text=" + encodeURIComponent(L.join("\n")), "_blank");
 }
 
+/* Cetak struk: menyiapkan tampilan khusus kertas struk lalu memanggil dialog cetak
+   bawaan perangkat. Untuk printer Bluetooth termal, pilih layanan cetak seperti RawBT
+   di dialog; bisa juga disimpan sebagai PDF atau dicetak ke printer biasa. */
+function printReceipt(tx) {
+  var area = document.getElementById("print-area");
+  if (!area) { announce("Area cetak tidak tersedia."); return; }
+  var L = "";
+  if (db.settings.logo) {
+    L += '<div class="r-center" style="margin-bottom:6px;"><img src="' + db.settings.logo + '" alt="" style="max-width:150px;max-height:150px;" /></div>';
+  }
+  L += '<div class="r-center r-bold r-big">' + esc(db.settings.pantiName || "Klinik Pijat") + '</div>';
+  if (db.settings.address) L += '<div class="r-center">' + esc(db.settings.address) + '</div>';
+  if (db.settings.phone) L += '<div class="r-center">Telp: ' + esc(db.settings.phone) + '</div>';
+  L += '<div class="r-sep"></div>';
+  L += '<div>Tanggal: ' + esc(tglPanjang(tx.dateStr)) + '</div>';
+  if (tx.customer) L += '<div>Pelanggan: ' + esc(tx.customer) + '</div>';
+  if (tx.performer === "therapist" && tx.therapistName) L += '<div>Terapis: ' + esc(tx.therapistName) + '</div>';
+  L += '<div class="r-sep"></div>';
+  tx.items.forEach(function (i) {
+    L += '<div class="r-row"><span>' + esc(i.name) + ' x' + i.qty + '</span><span>' + rupiah(i.price * i.qty) + '</span></div>';
+  });
+  if (tx.discount > 0) L += '<div class="r-row"><span>Diskon' + (tx.voucherCode ? ' (' + esc(tx.voucherCode) + ')' : '') + '</span><span>-' + rupiah(tx.discount) + '</span></div>';
+  if (tx.transport) L += '<div class="r-row"><span>Transport</span><span>' + rupiah(tx.transport) + '</span></div>';
+  L += '<div class="r-sep"></div>';
+  L += '<div class="r-row r-bold r-big"><span>TOTAL</span><span>' + rupiah(tx.total) + '</span></div>';
+  L += '<div>Pembayaran: ' + (tx.payment === "cash" ? "Tunai" : tx.payment === "transfer" ? "Transfer/QRIS" : "Belum bayar") + '</div>';
+  L += '<div class="r-sep"></div>';
+  L += '<div class="r-center">Terima kasih atas kunjungan Anda</div>';
+  area.innerHTML = L;
+  announce("Menyiapkan struk untuk dicetak. Pilih printer atau simpan sebagai PDF di dialog cetak.");
+  setTimeout(function () { try { window.print(); } catch (e) { announce("Dialog cetak tidak tersedia di perangkat ini."); } }, 200);
+}
+
 /* =================== PENGELUARAN =================== */
 function expenseScreen() {
   var cats = ["Minyak/Krim", "Alat habis pakai", "Laundry/Linen", "Listrik & Air", "Sewa tempat", "Transport", "Pulsa/Data", "Perawatan alat", "Lain-lain"];
   render('<h2 class="screen-title">Catat pengeluaran</h2><label for="cat">Kategori</label><select id="cat">' + cats.map(function (c) { return '<option>' + c + '</option>'; }).join("") + '</select><label for="amt">Jumlah (rupiah)</label><input id="amt" type="tel" inputmode="numeric" /><label for="note">Catatan (boleh kosong)</label><input id="note" type="text" /><button class="btn primary big" id="save">Simpan pengeluaran</button><button class="backlink" id="back">Kembali ke menu</button>');
   on("save", "click", function () { var a = digits(el("amt").value); if (a <= 0) { announce("Jumlah belum benar."); el("amt").focus(); return; } db.expenses.push({ id: uid(), dateStr: todayStr(), createdAt: new Date().toISOString(), category: el("cat").value, amount: a, note: el("note").value.trim() }); saveDB(); announce("Pengeluaran " + el("cat").value + " " + terbilang(a) + " rupiah tersimpan."); home(); });
-  on("back", "click", home);
+  onBack("back", home);
 }
 
 /* =================== PIUTANG =================== */
@@ -477,7 +517,7 @@ function debtsScreen() {
   var items = pend.length ? pend.map(function (t) { return '<div class="list-item"><strong>' + esc(t.customer || "Tanpa nama") + '</strong> — ' + rupiah(t.total) + '<br><span class="muted">' + t.items.map(function (i) { return esc(i.name); }).join(", ") + ' · ' + t.dateStr + '</span><br><button class="btn accent" data-id="' + t.id + '" style="margin-top:8px">Tandai sudah lunas</button></div>'; }).join("") : '<p class="muted">Tidak ada piutang. Semua lunas.</p>';
   render('<h2 class="screen-title">Daftar piutang</h2><p class="help">' + (pend.length ? "Ada " + pend.length + " belum bayar, total " + rupiah(tot) + "." : "") + '</p>' + items + '<button class="backlink" id="back">Kembali ke menu</button>');
   each("[data-id]", function (b) { b.addEventListener("click", function () { settle(b.getAttribute("data-id"), "debts"); }); });
-  on("back", "click", home);
+  onBack("back", home);
 }
 
 function settle(id, fromScreen) {
@@ -522,7 +562,7 @@ function settle(id, fromScreen) {
   render('<h2 class="screen-title">Lunas dengan cara apa?</h2><p class="help">' + esc(t.customer || "Pelanggan") + ' membayar ' + rupiah(t.total) + '.</p><button class="btn primary" id="cash">Tunai</button><button class="btn" id="tf">Transfer / QRIS</button><button class="backlink" id="back">Kembali</button>');
   on("cash", "click", function () { askCommission("cash"); });
   on("tf", "click", function () { askCommission("transfer"); });
-  on("back", "click", function () { if (fromScreen === "detail") txDetail(id); else debtsScreen(); });
+  onBack("back", function () { if (fromScreen === "detail") txDetail(id); else debtsScreen(); });
 }
 
 /* =================== KOMISI =================== */
@@ -549,14 +589,14 @@ function commissionScreen() {
   
   on("report", "click", function () { therapistReportScreen(thisMonth()); });
   each("[data-id]", function (b) { b.addEventListener("click", function () { payComm(b.getAttribute("data-id")); }); });
-  on("back", "click", home);
+  onBack("back", home);
 }
 
 function payComm(thId) {
   var t = db.therapists.filter(function (x) { return x.id === thId; })[0]; if (!t) return; var owe = accrued(thId);
   render('<h2 class="screen-title">Bayar komisi ' + esc(t.name) + '</h2><p class="help">Belum dibayar: ' + rupiah(owe) + '.</p><label for="a">Jumlah dibayar (rupiah)</label><input id="a" type="tel" inputmode="numeric" value="' + (owe > 0 ? owe : 0) + '" /><button class="btn primary big" id="ok">Catat pembayaran</button><button class="backlink" id="back">Kembali</button>');
   on("ok", "click", function () { var a = digits(el("a").value); if (a <= 0) { announce("Jumlah belum benar."); return; } db.commissionPayments.push({ id: uid(), therapistId: thId, amount: a, dateStr: todayStr(), createdAt: new Date().toISOString() }); saveDB(); announce("Pembayaran komisi " + t.name + " " + terbilang(a) + " rupiah tercatat."); commissionScreen(); });
-  on("back", "click", commissionScreen);
+  onBack("back", commissionScreen);
 }
 
 function therapistReportScreen(ym) {
@@ -589,7 +629,7 @@ function therapistReportScreen(ym) {
   
   on("prev-m", "click", function () { therapistReportScreen(addMonth(ym, -1)); });
   on("next-m", "click", function () { therapistReportScreen(addMonth(ym, 1)); });
-  on("back", "click", commissionScreen);
+  onBack("back", commissionScreen);
   announce("Performa terapis bulan " + namaBulan(ym) + ".");
 }
 
@@ -643,7 +683,7 @@ function historyScreen() {
     });
   });
   
-  on("back", "click", home);
+  onBack("back", home);
 }
 
 function txDetail(id) {
@@ -654,12 +694,14 @@ function txDetail(id) {
     '<label for="d">Ubah tanggal</label><input id="d" type="date" value="' + t.dateStr + '" />' +
     '<button class="btn accent" id="savedate">Simpan tanggal</button>' +
     (t.settled ? '' : '<button class="btn" id="settle">Tandai sudah lunas</button>') +
+    '<button class="btn accent" id="print">Cetak struk (printer/PDF)</button>' +
     '<button class="btn danger" id="del">Hapus transaksi ini</button>' +
     '<button class="backlink" id="back">Kembali ke riwayat</button>');
+  on("print", "click", function () { printReceipt(t); });
   on("savedate", "click", function () { var v = el("d").value; if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { announce("Tanggal belum benar."); return; } t.dateStr = v; if (t.settled && t.settledDate) t.settledDate = v; saveDB(); announce("Tanggal diperbarui."); txDetail(id); });
   on("settle", "click", function () { settle(id, "detail"); });
   on("del", "click", function () { confirmDelete(id); });
-  on("back", "click", historyScreen);
+  onBack("back", historyScreen);
 }
 
 function confirmDelete(id) {
@@ -682,6 +724,18 @@ function confirmDelete(id) {
     saveDB(); announce("Transaksi dihapus."); historyScreen();
   });
   on("no", "click", function () { txDetail(id); });
+  backFn = function () { txDetail(id); };
+}
+
+/* Konfirmasi umum sebelum tindakan permanen (mis. hapus data yang masih terpakai). */
+function confirmSimple(title, message, onYes, onNo) {
+  render('<h2 class="screen-title">' + title + '</h2><p class="help">' + message + '</p>' +
+    '<button class="btn danger" id="yes">Ya, lanjutkan</button>' +
+    '<button class="btn primary" id="no">Batal</button>');
+  announce(title);
+  on("yes", "click", onYes);
+  on("no", "click", onNo || function () {});
+  backFn = onNo || function () {};
 }
 
 /* =================== PERHITUNGAN KEUANGAN =================== */
@@ -710,8 +764,9 @@ function neraca() {
   var M = db.capital.filter(function (c) { return c.type === "modal"; }).reduce(function (a, c) { return a + c.amount; }, 0);
   var P = db.capital.filter(function (c) { return c.type === "prive"; }).reduce(function (a, c) { return a + c.amount; }, 0);
   var Akas = db.assets.filter(function (x) { return x.acquire === "kas"; }).reduce(function (a, x) { return a + x.cost; }, 0);
-  var Amod = db.assets.filter(function (x) { return x.acquire !== "kas"; }).reduce(function (a, x) { return a + x.cost; }, 0);
-  var Aall = Akas + Amod;
+  var Amod = db.assets.filter(function (x) { return x.acquire === "modal"; }).reduce(function (a, x) { return a + x.cost; }, 0);
+  var Ahibah = db.assets.filter(function (x) { return x.acquire === "hibah"; }).reduce(function (a, x) { return a + x.cost; }, 0);
+  var Aall = Akas + Amod + Ahibah;
   var kas = M - P + received - E - Cpaid - Akas;
   var piutang = unpaid;
   var asetTetap = Aall;
@@ -719,9 +774,10 @@ function neraca() {
   var utangKomisi = Crec - Cpaid;
   var totalLiab = utangKomisi;
   var modalDisetor = M - P + Amod;
+  var hibah = Ahibah;
   var labaDitahan = revenue - E - Crec;
-  var totalEkuitas = modalDisetor + labaDitahan;
-  return { kas: kas, piutang: piutang, asetTetap: asetTetap, totalAset: totalAset, utangKomisi: utangKomisi, totalLiab: totalLiab, modalDisetor: modalDisetor, labaDitahan: labaDitahan, totalEkuitas: totalEkuitas, seimbang: Math.round(totalAset) === Math.round(totalLiab + totalEkuitas) };
+  var totalEkuitas = modalDisetor + hibah + labaDitahan;
+  return { kas: kas, piutang: piutang, asetTetap: asetTetap, totalAset: totalAset, utangKomisi: utangKomisi, totalLiab: totalLiab, modalDisetor: modalDisetor, hibah: hibah, labaDitahan: labaDitahan, totalEkuitas: totalEkuitas, seimbang: Math.round(totalAset) === Math.round(totalLiab + totalEkuitas) };
 }
 
 /* =================== LAPORAN =================== */
@@ -749,6 +805,7 @@ function drawReport(ym) {
       '<div class="ln totline"><span>Total aset</span><span>' + rupiah(nr.totalAset) + '</span></div>' +
       '<div class="ln" style="margin-top:8px"><span>Utang komisi terapis</span><span>' + rupiah(nr.utangKomisi) + '</span></div>' +
       '<div class="ln"><span>Modal disetor (bersih)</span><span>' + rupiah(nr.modalDisetor) + '</span></div>' +
+      (nr.hibah ? '<div class="ln"><span>Modal hibah/sumbangan</span><span>' + rupiah(nr.hibah) + '</span></div>' : '') +
       '<div class="ln"><span>Laba ditahan</span><span>' + rupiah(nr.labaDitahan) + '</span></div>' +
       '<div class="ln totline"><span>Total liabilitas & ekuitas</span><span>' + rupiah(nr.totalLiab + nr.totalEkuitas) + '</span></div>' +
       '<p class="muted" style="margin-top:8px">' + (nr.seimbang ? "Seimbang ✓" : "Perlu diperiksa") + '</p>' +
@@ -761,7 +818,7 @@ function drawReport(ym) {
   on("next", "click", function () { drawReport(addMonth(ym, 1)); });
   on("dl", "click", function () { exportExcel(ym); });
   on("wa", "click", function () { shareReport(ym, lr, nr); });
-  on("back", "click", home);
+  onBack("back", home);
   announce("Laporan " + namaBulan(ym) + ". Laba bersih " + terbilang(lr.laba) + " rupiah. " + (nr.seimbang ? "Neraca seimbang." : ""));
 }
 
@@ -809,7 +866,7 @@ function exportExcel(ym) {
     var nrA = head.concat([["LAPORAN POSISI KEUANGAN (NERACA)"], ["Per tanggal", tglPanjang(todayStr())], [],
       ["ASET"], ["Kas & setara kas", nr.kas], ["Piutang usaha", nr.piutang], ["Aset tetap (harga perolehan)", nr.asetTetap], ["Total aset", nr.totalAset], [],
       ["LIABILITAS"], ["Utang komisi terapis", nr.utangKomisi], ["Total liabilitas", nr.totalLiab], [],
-      ["EKUITAS"], ["Modal disetor (bersih)", nr.modalDisetor], ["Laba ditahan", nr.labaDitahan], ["Total ekuitas", nr.totalEkuitas], [],
+      ["EKUITAS"], ["Modal disetor (bersih)", nr.modalDisetor], ["Modal hibah/sumbangan", nr.hibah], ["Laba ditahan", nr.labaDitahan], ["Total ekuitas", nr.totalEkuitas], [],
       ["Total liabilitas & ekuitas", nr.totalLiab + nr.totalEkuitas], ["Status", nr.seimbang ? "Seimbang" : "Perlu diperiksa"]]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(nrA), "Neraca");
     
@@ -854,57 +911,102 @@ function settingsScreen() {
   on("inv", "click", inventoryScreen);
   on("pin", "click", pinScreen); on("bk", "click", backup);
   on("rs", "click", function () { el("rsfile").click(); }); on("rsfile", "change", restore);
-  on("back", "click", home);
+  onBack("back", home);
 }
 
 function customerScreen() {
   var list = (db.customers || []).map(function (c) {
-    return '<div class="list-item">' + esc(c.name) + ' — ' + esc(c.phone) + ' <button class="backlink" data-del="' + c.id + '" style="display:inline; margin-left:8px;">hapus</button></div>';
+    return '<div class="list-item"><strong>' + esc(c.name) + '</strong> — ' + esc(c.phone || "tanpa nomor") + ' ' +
+      '<button class="backlink" data-edit="' + c.id + '" style="display:inline; margin-left:8px;">ubah</button> ' +
+      '<button class="backlink" data-del="' + c.id + '" style="display:inline; margin-left:8px;">hapus</button></div>';
   }).join("");
   render('<h2 class="screen-title">Daftar Pelanggan</h2>' +
     '<button class="btn primary" id="dl-contacts-svc" style="margin-bottom:14px; text-align:center; min-height:48px; padding:10px;">Unduh Kontak Excel</button>' +
-    '<div class="card">' + (list || '<p class="muted">Belum ada pelanggan.</p>') + '</div><label for="cn">Nama Pelanggan</label><input id="cn" type="text" /><label for="cp">Nomor WhatsApp</label><input id="cp" type="tel" placeholder="contoh: 0813..." /><button class="btn accent" id="add" style="margin-top:14px; text-align:center;">Tambah Pelanggan</button><button class="backlink" id="back">Kembali ke pengaturan</button>');
-  
+    '<div class="card">' + (list || '<p class="muted">Belum ada pelanggan.</p>') + '</div><label for="cn">Nama Pelanggan</label><input id="cn" type="text" /><label for="cp">Nomor WhatsApp (boleh dikosongkan)</label><input id="cp" type="tel" placeholder="contoh: 0813..." /><button class="btn accent" id="add" style="margin-top:14px; text-align:center;">Tambah Pelanggan</button><button class="backlink" id="back">Kembali ke pengaturan</button>');
+
   on("dl-contacts-svc", "click", exportContactsExcel);
   on("add", "click", function () {
     var name = el("cn").value.trim(), phone = el("cp").value.trim();
-    if (!name || !phone) { announce("Nama & nomor WhatsApp harus diisi."); return; }
+    if (!name) { announce("Nama pelanggan harus diisi."); el("cn").focus(); return; }
     if (!db.customers) db.customers = [];
     db.customers.push({ id: uid(), name: name, phone: phone });
     saveDB();
+    announce("Pelanggan " + name + " ditambahkan.");
     customerScreen();
   });
-  
+
+  each("[data-edit]", function (b) { b.addEventListener("click", function () { editCust(b.getAttribute("data-edit")); }); });
   each("[data-del]", function (b) {
     b.addEventListener("click", function () {
-      db.customers = db.customers.filter(function (x) { return x.id !== b.getAttribute("data-del"); });
-      saveDB();
-      customerScreen();
+      var id = b.getAttribute("data-del");
+      var c = db.customers.filter(function (x) { return x.id === id; })[0];
+      confirmSimple("Hapus pelanggan?", (c ? esc(c.name) : "Pelanggan ini") + " akan dihapus dari daftar. Riwayat transaksi lama tidak berubah. Lanjutkan?",
+        function () { db.customers = db.customers.filter(function (x) { return x.id !== id; }); saveDB(); announce("Pelanggan dihapus."); customerScreen(); },
+        customerScreen);
     });
   });
-  
-  on("back", "click", settingsScreen);
+
+  onBack("back", settingsScreen);
+}
+
+function editCust(id) {
+  var c = db.customers.filter(function (x) { return x.id === id; })[0];
+  if (!c) { customerScreen(); return; }
+  var oldName = c.name;
+  render('<h2 class="screen-title">Ubah pelanggan</h2>' +
+    '<label for="cn">Nama Pelanggan</label><input id="cn" type="text" value="' + esc(c.name) + '" />' +
+    '<label for="cp">Nomor WhatsApp (boleh dikosongkan)</label><input id="cp" type="tel" value="' + esc(c.phone) + '" />' +
+    '<button class="btn primary big" id="ok">Simpan perubahan</button>' +
+    '<button class="backlink" id="back">Kembali</button>');
+  on("ok", "click", function () {
+    var name = el("cn").value.trim(), phone = el("cp").value.trim();
+    if (!name) { announce("Nama pelanggan harus diisi."); return; }
+    c.name = name; c.phone = phone;
+    // Samakan nama pada transaksi lama milik pelanggan ini agar loyalitas & riwayat tetap konsisten.
+    db.transactions.forEach(function (tx) {
+      if ((tx.customer || "").toLowerCase().trim() === (oldName || "").toLowerCase().trim()) {
+        tx.customer = name; tx.customerPhone = phone;
+      }
+    });
+    saveDB(); announce("Pelanggan diperbarui."); customerScreen();
+  });
+  onBack("back", customerScreen);
 }
 
 function inventoryScreen() {
   var list = (db.inventory || []).map(function (i) {
-    var isLow = i.currentStock <= i.minStockAlert;
-    var warning = isLow ? ' <strong style="color:var(--warn);">[Hampir Habis]</strong>' : '';
-    return '<div class="list-item"><strong>' + esc(i.name) + '</strong> — ' + i.currentStock + ' ' + esc(i.unit) + ' <span class="muted">(Minimum: ' + i.minStockAlert + ' ' + esc(i.unit) + ')</span>' + warning + ' <button class="backlink" data-del="' + i.id + '" style="display:inline; margin-left:8px;">hapus</button></div>';
+    var tag = i.currentStock <= 0 ? ' <strong style="color:var(--warn);">[Stok kosong]</strong>'
+      : (i.minStockAlert > 0 && i.currentStock <= i.minStockAlert) ? ' <strong style="color:var(--warn);">[Hampir habis]</strong>' : '';
+    return '<div class="list-item"><strong>' + esc(i.name) + '</strong> — ' + i.currentStock + ' ' + esc(i.unit) + ' <span class="muted">(Minimum: ' + i.minStockAlert + ' ' + esc(i.unit) + ')</span>' + tag +
+      '<br><button class="backlink" data-edit="' + i.id + '" style="display:inline;">ubah</button> ' +
+      '<button class="backlink" data-del="' + i.id + '" style="display:inline; margin-left:8px;">hapus</button></div>';
   }).join("");
-  
+
   var options = (db.inventory || []).map(function (i) {
     return '<option value="' + i.id + '">' + esc(i.name) + ' (' + esc(i.unit) + ')</option>';
   }).join("");
-  
+
   render(
     '<h2 class="screen-title">Inventaris & Stok</h2>' +
-    '<button class="btn primary" id="setup-recipe">Atur Penggunaan Stok Layanan<span class="sub">Hubungkan layanan dengan pemakaian stok</span></button>' +
+
+    '<h3>Buat Barang Baru</h3>' +
+    '<p class="help">Barang apa pun bisa dibuat sendiri: minyak, krim, handuk, kapas, dan lain-lain.</p>' +
+    '<label for="new-name">Nama Barang</label>' +
+    '<input id="new-name" type="text" placeholder="contoh: Minyak Zaitun, Handuk, Kapas" />' +
+    '<label for="new-unit">Satuan</label>' +
+    '<input id="new-unit" type="text" placeholder="contoh: ml, pcs, botol, lembar" />' +
+    '<label for="new-min">Batas Stok Minimum (untuk peringatan)</label>' +
+    '<input id="new-min" type="tel" inputmode="numeric" placeholder="contoh: 500" />' +
+    '<button class="btn accent" id="create-item" style="text-align:center;">Buat Barang</button>' +
+
     '<div class="divider"></div>' +
     '<h3>Daftar Barang</h3>' +
     '<div class="card">' + (list || '<p class="muted">Belum ada barang di inventaris.</p>') + '</div>' +
-    
-    '<h3>Tambah Stok Baru (Pembelian)</h3>' +
+
+    '<button class="btn primary" id="setup-recipe">Atur Pemakaian Stok per Layanan<span class="sub">Hubungkan layanan dengan pemakaian stok</span></button>' +
+
+    '<div class="divider"></div>' +
+    '<h3>Tambah Stok (Pembelian)</h3>' +
     '<p class="help">Menambah jumlah stok sekaligus mencatat pengeluaran keuangan otomatis.</p>' +
     '<label for="restock-item">Pilih Barang</label>' +
     '<select id="restock-item">' + options + '</select>' +
@@ -913,22 +1015,12 @@ function inventoryScreen() {
     '<label for="restock-cost">Biaya Pembelian (Rupiah)</label>' +
     '<input id="restock-cost" type="tel" inputmode="numeric" placeholder="contoh: 50000" />' +
     '<button class="btn accent" id="add-stock" style="text-align:center;">Simpan & Catat Pengeluaran</button>' +
-    
-    '<div class="divider"></div>' +
-    '<h3>Buat Barang Baru</h3>' +
-    '<label for="new-name">Nama Barang</label>' +
-    '<input id="new-name" type="text" placeholder="contoh: Minyak Zaitun" />' +
-    '<label for="new-min">Batas Stok Minimum</label>' +
-    '<input id="new-min" type="tel" inputmode="numeric" placeholder="contoh: 500" />' +
-    '<label for="new-unit">Satuan</label>' +
-    '<input id="new-unit" type="text" placeholder="contoh: ml, pcs, botol" />' +
-    '<button class="btn" id="create-item" style="text-align:center;">Buat Barang</button>' +
-    
+
     '<button class="backlink" id="back">Kembali ke pengaturan</button>'
   );
-  
+
   on("setup-recipe", "click", serviceRecipeScreen);
-  
+
   on("add-stock", "click", function () {
     var itemId = el("restock-item").value;
     var addQty = digits(el("restock-qty").value);
@@ -974,16 +1066,44 @@ function inventoryScreen() {
     inventoryScreen();
   });
   
+  each("[data-edit]", function (b) { b.addEventListener("click", function () { editInv(b.getAttribute("data-edit")); }); });
   each("[data-del]", function (b) {
     b.addEventListener("click", function () {
       var id = b.getAttribute("data-del");
-      db.inventory = db.inventory.filter(function (i) { return i.id !== id; });
-      saveDB();
-      inventoryScreen();
+      var item = db.inventory.filter(function (i) { return i.id === id; })[0];
+      var linked = db.services.filter(function (s) { return s.recipe && s.recipe.itemId === id; });
+      var warn = linked.length > 0
+        ? "Barang ini dipakai oleh layanan: " + linked.map(function (s) { return esc(s.name); }).join(", ") + ". Jika dihapus, hubungan pemakaian stok itu ikut hilang. Hapus?"
+        : (item ? esc(item.name) : "Barang ini") + " akan dihapus dari inventaris. Lanjutkan?";
+      confirmSimple("Hapus barang?", warn, function () {
+        db.inventory = db.inventory.filter(function (i) { return i.id !== id; });
+        db.services.forEach(function (s) { if (s.recipe && s.recipe.itemId === id) s.recipe = null; });
+        saveDB(); announce("Barang dihapus."); inventoryScreen();
+      }, inventoryScreen);
     });
   });
-  
-  on("back", "click", settingsScreen);
+
+  onBack("back", settingsScreen);
+}
+
+function editInv(id) {
+  var i = db.inventory.filter(function (x) { return x.id === id; })[0];
+  if (!i) { inventoryScreen(); return; }
+  render('<h2 class="screen-title">Ubah barang</h2>' +
+    '<label for="n">Nama Barang</label><input id="n" type="text" value="' + esc(i.name) + '" />' +
+    '<label for="u">Satuan</label><input id="u" type="text" value="' + esc(i.unit) + '" />' +
+    '<label for="m">Batas Stok Minimum</label><input id="m" type="tel" inputmode="numeric" value="' + i.minStockAlert + '" />' +
+    '<label for="s">Koreksi Jumlah Stok Saat Ini</label><input id="s" type="tel" inputmode="numeric" value="' + i.currentStock + '" />' +
+    '<p class="help">Mengoreksi stok di sini tidak mencatat pengeluaran. Untuk pembelian, gunakan "Tambah Stok".</p>' +
+    '<button class="btn primary big" id="ok">Simpan perubahan</button>' +
+    '<button class="backlink" id="back">Kembali</button>');
+  on("ok", "click", function () {
+    var n = el("n").value.trim();
+    if (!n) { announce("Nama barang harus diisi."); return; }
+    i.name = n; i.unit = el("u").value.trim() || "pcs"; i.minStockAlert = digits(el("m").value); i.currentStock = digits(el("s").value);
+    saveDB(); announce("Barang diperbarui."); inventoryScreen();
+  });
+  onBack("back", inventoryScreen);
 }
 
 function serviceRecipeScreen() {
@@ -1044,7 +1164,7 @@ function serviceRecipeScreen() {
     inventoryScreen();
   });
   
-  on("back", "click", inventoryScreen);
+  onBack("back", inventoryScreen);
 }
 
 function financialMenuScreen() {
@@ -1054,7 +1174,7 @@ function financialMenuScreen() {
     '<button class="backlink" id="back">Kembali ke menu</button>');
   on("rep-emkm", "click", reportScreen);
   on("rep-cash", "click", cashLedgerScreen);
-  on("back", "click", home);
+  onBack("back", home);
 }
 
 function compileCashFlows() {
@@ -1180,7 +1300,7 @@ function cashLedgerScreen() {
     announce("Ditemukan " + filtered.length + " mutasi kas.");
   });
   
-  on("back", "click", financialMenuScreen);
+  onBack("back", financialMenuScreen);
   announce("Buku kas harian dibuka.");
 }
 
@@ -1276,7 +1396,7 @@ function marketingScreen() {
   }
   
   bindPromoButtons();
-  on("back", "click", home);
+  onBack("back", home);
   announce("Menu promosi dibuka.");
 }
 
@@ -1300,53 +1420,233 @@ function exportContactsExcel() {
 }
 
 function svcScreen() {
-  var list = db.services.map(function (s) { return '<div class="list-item">' + esc(s.name) + ' — ' + rupiah(s.price) + ' <button class="backlink" data-del="' + s.id + '" style="display:inline; margin-left:8px;">hapus</button></div>'; }).join("");
+  var list = db.services.map(function (s) {
+    return '<div class="list-item"><strong>' + esc(s.name) + '</strong> — ' + rupiah(s.price) + ' ' +
+      '<button class="backlink" data-edit="' + s.id + '" style="display:inline; margin-left:8px;">ubah</button> ' +
+      '<button class="backlink" data-del="' + s.id + '" style="display:inline; margin-left:8px;">hapus</button></div>';
+  }).join("");
   render('<h2 class="screen-title">Layanan & harga</h2><div class="card">' + (list || '<p class="muted">Belum ada.</p>') + '</div><label for="n">Nama layanan</label><input id="n" type="text" /><label for="p">Harga (rupiah)</label><input id="p" type="tel" inputmode="numeric" value="100000" /><button class="btn accent" id="add" style="margin-top:14px; text-align:center;">Tambah</button><button class="backlink" id="back">Kembali ke pengaturan</button>');
-  on("add", "click", function () { var n = el("n").value.trim(), p = digits(el("p").value); if (!n || p <= 0) { announce("Isi nama & harga."); return; } db.services.push({ id: uid(), name: n, price: p }); saveDB(); svcScreen(); });
-  each("[data-del]", function (b) { b.addEventListener("click", function () { db.services = db.services.filter(function (x) { return x.id !== b.getAttribute("data-del"); }); saveDB(); svcScreen(); }); });
-  on("back", "click", settingsScreen);
+  on("add", "click", function () { var n = el("n").value.trim(), p = digits(el("p").value); if (!n || p <= 0) { announce("Isi nama & harga."); return; } db.services.push({ id: uid(), name: n, price: p, recipe: null }); saveDB(); announce("Layanan " + n + " ditambahkan."); svcScreen(); });
+  each("[data-edit]", function (b) { b.addEventListener("click", function () { editSvc(b.getAttribute("data-edit")); }); });
+  each("[data-del]", function (b) {
+    b.addEventListener("click", function () {
+      var id = b.getAttribute("data-del");
+      var s = db.services.filter(function (x) { return x.id === id; })[0];
+      var used = db.transactions.filter(function (t) { return t.items.some(function (i) { return i.serviceId === id; }); }).length;
+      var warn = used > 0
+        ? "Layanan ini sudah dipakai di " + used + " transaksi. Riwayat lama tidak berubah, tapi layanan tak bisa dipilih lagi untuk transaksi baru. Hapus?"
+        : "Layanan " + (s ? esc(s.name) : "") + " akan dihapus. Lanjutkan?";
+      confirmSimple("Hapus layanan?", warn,
+        function () { db.services = db.services.filter(function (x) { return x.id !== id; }); saveDB(); announce("Layanan dihapus."); svcScreen(); },
+        svcScreen);
+    });
+  });
+  onBack("back", settingsScreen);
+}
+
+function editSvc(id) {
+  var s = db.services.filter(function (x) { return x.id === id; })[0];
+  if (!s) { svcScreen(); return; }
+  render('<h2 class="screen-title">Ubah layanan</h2>' +
+    '<label for="n">Nama layanan</label><input id="n" type="text" value="' + esc(s.name) + '" />' +
+    '<label for="p">Harga (rupiah)</label><input id="p" type="tel" inputmode="numeric" value="' + s.price + '" />' +
+    '<button class="btn primary big" id="ok">Simpan perubahan</button>' +
+    '<button class="backlink" id="back">Kembali</button>');
+  on("ok", "click", function () {
+    var n = el("n").value.trim(), p = digits(el("p").value);
+    if (!n || p <= 0) { announce("Isi nama & harga."); return; }
+    s.name = n; s.price = p; saveDB(); announce("Layanan diperbarui."); svcScreen();
+  });
+  onBack("back", svcScreen);
 }
 
 function thScreen() {
-  var list = db.therapists.map(function (t) { return '<div class="list-item">' + esc(t.name) + ' <button class="backlink" data-del="' + t.id + '" style="display:inline; margin-left:8px;">hapus</button></div>'; }).join("");
+  var list = db.therapists.map(function (t) {
+    return '<div class="list-item"><strong>' + esc(t.name) + '</strong> ' +
+      '<button class="backlink" data-edit="' + t.id + '" style="display:inline; margin-left:8px;">ubah</button> ' +
+      '<button class="backlink" data-del="' + t.id + '" style="display:inline; margin-left:8px;">hapus</button></div>';
+  }).join("");
   render('<h2 class="screen-title">Terapis</h2><div class="card">' + (list || '<p class="muted">Belum ada.</p>') + '</div><label for="n">Nama terapis</label><input id="n" type="text" /><button class="btn accent" id="add" style="margin-top:14px; text-align:center;">Tambah</button><button class="backlink" id="back">Kembali ke pengaturan</button>');
-  on("add", "click", function () { var n = el("n").value.trim(); if (!n) { announce("Nama belum diisi."); return; } db.therapists.push({ id: uid(), name: n }); saveDB(); thScreen(); });
-  each("[data-del]", function (b) { b.addEventListener("click", function () { db.therapists = db.therapists.filter(function (x) { return x.id !== b.getAttribute("data-del"); }); saveDB(); thScreen(); }); });
-  on("back", "click", settingsScreen);
+  on("add", "click", function () { var n = el("n").value.trim(); if (!n) { announce("Nama belum diisi."); return; } db.therapists.push({ id: uid(), name: n }); saveDB(); announce("Terapis " + n + " ditambahkan."); thScreen(); });
+  each("[data-edit]", function (b) { b.addEventListener("click", function () { editTh(b.getAttribute("data-edit")); }); });
+  each("[data-del]", function (b) {
+    b.addEventListener("click", function () {
+      var id = b.getAttribute("data-del");
+      var t = db.therapists.filter(function (x) { return x.id === id; })[0];
+      var owe = accrued(id);
+      var txCount = db.transactions.filter(function (x) { return x.therapistId === id; }).length;
+      var warn;
+      if (owe > 0) {
+        warn = "Perhatian: terapis " + (t ? esc(t.name) : "") + " masih punya komisi belum dibayar sebesar " + rupiah(owe) + ". Jika dihapus, komisi ini tidak bisa lagi dibayar lewat aplikasi. Sebaiknya bayar dulu. Tetap hapus?";
+      } else if (txCount > 0) {
+        warn = "Terapis ini punya " + txCount + " transaksi. Riwayat tidak berubah, tapi namanya akan hilang dari daftar. Hapus?";
+      } else {
+        warn = "Terapis " + (t ? esc(t.name) : "") + " akan dihapus. Lanjutkan?";
+      }
+      confirmSimple("Hapus terapis?", warn,
+        function () { db.therapists = db.therapists.filter(function (x) { return x.id !== id; }); saveDB(); announce("Terapis dihapus."); thScreen(); },
+        thScreen);
+    });
+  });
+  onBack("back", settingsScreen);
+}
+
+function editTh(id) {
+  var t = db.therapists.filter(function (x) { return x.id === id; })[0];
+  if (!t) { thScreen(); return; }
+  render('<h2 class="screen-title">Ubah terapis</h2>' +
+    '<label for="n">Nama terapis</label><input id="n" type="text" value="' + esc(t.name) + '" />' +
+    '<button class="btn primary big" id="ok">Simpan perubahan</button>' +
+    '<button class="backlink" id="back">Kembali</button>');
+  on("ok", "click", function () {
+    var n = el("n").value.trim();
+    if (!n) { announce("Nama belum diisi."); return; }
+    t.name = n;
+    // Perbarui nama tersimpan di transaksi lama agar laporan tetap konsisten.
+    db.transactions.forEach(function (tx) { if (tx.therapistId === id) tx.therapistName = n; });
+    saveDB(); announce("Terapis diperbarui."); thScreen();
+  });
+  onBack("back", thScreen);
 }
 
 function feeScreen() {
   render('<h2 class="screen-title">Biaya transport & komisi</h2><label for="tr">Biaya transport default (rupiah)</label><input id="tr" type="tel" inputmode="numeric" value="' + (db.settings.transportFee || 0) + '" /><label for="cm">Komisi terapis (persen)</label><input id="cm" type="tel" inputmode="numeric" value="' + (db.settings.defaultCommission || 0) + '" /><button class="btn primary big" id="ok">Simpan</button><button class="backlink" id="back">Kembali</button>');
   on("ok", "click", function () { db.settings.transportFee = digits(el("tr").value); var c = digits(el("cm").value); db.settings.defaultCommission = c > 100 ? 100 : c; saveDB(); announce("Tersimpan."); settingsScreen(); });
-  on("back", "click", settingsScreen);
+  onBack("back", settingsScreen);
+}
+
+/* Membaca berkas gambar logo dan mengecilkannya (maks 320px) agar hemat ruang penyimpanan. */
+function loadLogoFile(file, cb) {
+  var reader = new FileReader();
+  reader.onload = function (e) {
+    var img = new Image();
+    img.onload = function () {
+      var max = 320, w = img.width, h = img.height;
+      if (w > h && w > max) { h = Math.round(h * max / w); w = max; }
+      else if (h >= w && h > max) { w = Math.round(w * max / h); h = max; }
+      try {
+        var canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        cb(canvas.toDataURL("image/png"));
+      } catch (err) { cb(e.target.result); }
+    };
+    img.onerror = function () { cb(null); };
+    img.src = e.target.result;
+  };
+  reader.onerror = function () { cb(null); };
+  reader.readAsDataURL(file);
 }
 
 function idScreen() {
-  render('<h2 class="screen-title">Identitas klinik</h2><label for="nm">Nama</label><input id="nm" type="text" value="' + esc(db.settings.pantiName) + '" /><label for="ph">Telepon</label><input id="ph" type="text" value="' + esc(db.settings.phone) + '" /><label for="ad">Alamat</label><input id="ad" type="text" value="' + esc(db.settings.address) + '" /><button class="btn primary big" id="ok">Simpan</button><button class="backlink" id="back">Kembali</button>');
-  on("ok", "click", function () { db.settings.pantiName = el("nm").value.trim(); db.settings.phone = el("ph").value.trim(); db.settings.address = el("ad").value.trim(); saveDB(); announce("Tersimpan."); settingsScreen(); });
-  on("back", "click", settingsScreen);
+  var logoBlock = db.settings.logo
+    ? '<div style="margin:10px 0;"><img src="' + db.settings.logo + '" alt="Logo klinik saat ini" style="max-width:150px;max-height:150px;border:2px solid var(--line);border-radius:12px;padding:6px;background:#fff;" /><br><button class="backlink" id="rmlogo" style="display:inline;">Hapus logo</button></div>'
+    : '<p class="help">Belum ada logo. Logo akan muncul di struk yang dicetak.</p>';
+  render('<h2 class="screen-title">Identitas klinik</h2>' +
+    '<label for="nm">Nama</label><input id="nm" type="text" value="' + esc(db.settings.pantiName) + '" />' +
+    '<label for="ph">Telepon</label><input id="ph" type="text" value="' + esc(db.settings.phone) + '" />' +
+    '<label for="ad">Alamat</label><input id="ad" type="text" value="' + esc(db.settings.address) + '" />' +
+    '<label for="logo">Logo klinik (gambar, opsional)</label>' +
+    '<input id="logo" type="file" accept="image/*" />' +
+    logoBlock +
+    '<button class="btn primary big" id="ok">Simpan</button>' +
+    '<button class="backlink" id="back">Kembali</button>');
+  function saveText() { db.settings.pantiName = el("nm").value.trim(); db.settings.phone = el("ph").value.trim(); db.settings.address = el("ad").value.trim(); }
+  on("ok", "click", function () { saveText(); saveDB(); announce("Tersimpan."); settingsScreen(); });
+  on("logo", "change", function (ev) {
+    var f = ev.target.files[0]; if (!f) return;
+    announce("Memproses gambar logo...");
+    loadLogoFile(f, function (dataUrl) {
+      if (!dataUrl) { announce("Gagal membaca gambar. Coba gambar lain."); return; }
+      saveText(); // jaga agar teks yang sudah diketik tidak hilang saat layar dimuat ulang
+      db.settings.logo = dataUrl; saveDB(); announce("Logo tersimpan."); idScreen();
+    });
+  });
+  on("rmlogo", "click", function () { saveText(); db.settings.logo = ""; saveDB(); announce("Logo dihapus."); idScreen(); });
+  onBack("back", settingsScreen);
 }
 
 function capScreen() {
   var list = db.capital.slice().reverse().slice(0, 20).map(function (c) { return '<div class="list-item">' + (c.type === "modal" ? "Setor modal" : "Ambil pribadi") + ' — ' + rupiah(c.amount) + '<br><span class="muted">' + c.dateStr + (c.note ? " · " + esc(c.note) : "") + '</span></div>'; }).join("");
   render('<h2 class="screen-title">Modal & pengambilan pribadi</h2><p class="help">Memisahkan uang usaha dan pribadi agar laci dan laporan akurat.</p><div class="card">' + (list || '<p class="muted">Belum ada catatan.</p>') + '</div><label for="amt">Jumlah (rupiah)</label><input id="amt" type="tel" inputmode="numeric" /><label for="note">Catatan (boleh kosong)</label><input id="note" type="text" /><button class="btn accent" id="modal" style="text-align:center;">Setor modal (uang masuk usaha)</button><button class="btn" id="prive" style="text-align:center;">Ambil untuk pribadi (uang keluar)</button><button class="backlink" id="back">Kembali</button>');
   function add(type) { var a = digits(el("amt").value); if (a <= 0) { announce("Jumlah belum benar."); return; } db.capital.push({ id: uid(), type: type, amount: a, dateStr: todayStr(), note: el("note").value.trim(), createdAt: new Date().toISOString() }); saveDB(); announce((type === "modal" ? "Setoran modal " : "Pengambilan pribadi ") + terbilang(a) + " rupiah tercatat."); capScreen(); }
-  on("modal", "click", function () { add("modal"); }); on("prive", "click", function () { add("prive"); }); on("back", "click", settingsScreen);
+  on("modal", "click", function () { add("modal"); }); on("prive", "click", function () { add("prive"); }); onBack("back", settingsScreen);
+}
+
+function assetSourceLabel(ac) {
+  return ac === "kas" ? "dibeli dari kas usaha" : ac === "hibah" ? "dari dana hibah" : "dari modal pribadi";
 }
 
 function assetScreen() {
-  var list = db.assets.map(function (a) { return '<div class="list-item">' + esc(a.name) + ' — ' + rupiah(a.cost) + '<br><span class="muted">' + (a.acquire === "kas" ? "dibeli dari kas usaha" : "dari modal pribadi") + '</span> <button class="backlink" data-del="' + a.id + '" style="display:inline; margin-left:8px;">hapus</button></div>'; }).join("");
-  render('<h2 class="screen-title">Daftar aset</h2><p class="help">Contoh: kursi pijat, kasur, alat. Dicatat sebesar harga beli.</p><div class="card">' + (list || '<p class="muted">Belum ada aset.</p>') + '</div><label for="n">Nama aset</label><input id="n" type="text" /><label for="c">Harga perolehan (rupiah)</label><input id="c" type="tel" inputmode="numeric" /><button class="btn accent" id="kas" style="text-align:center;">Tambah (dibeli dari kas usaha)</button><button class="btn" id="mod" style="text-align:center;">Tambah (dari modal pribadi)</button><button class="backlink" id="back">Kembali</button>');
-  function add(ac) { var n = el("n").value.trim(), c = digits(el("c").value); if (!n || c <= 0) { announce("Isi nama & harga."); return; } db.assets.push({ id: uid(), name: n, cost: c, acquire: ac, dateStr: todayStr(), createdAt: new Date().toISOString() }); saveDB(); announce("Aset " + n + " tercatat."); assetScreen(); }
-  on("kas", "click", function () { add("kas"); }); on("mod", "click", function () { add("modal"); });
-  each("[data-del]", function (b) { b.addEventListener("click", function () { db.assets = db.assets.filter(function (x) { return x.id !== b.getAttribute("data-del"); }); saveDB(); assetScreen(); }); });
-  on("back", "click", settingsScreen);
+  var list = db.assets.map(function (a) {
+    var qty = a.qty || 1;
+    var qtyText = qty > 1 ? ' ×' + qty : '';
+    return '<div class="list-item"><strong>' + esc(a.name) + qtyText + '</strong> — ' + rupiah(a.cost) +
+      '<br><span class="muted">' + assetSourceLabel(a.acquire) + '</span> ' +
+      '<button class="backlink" data-edit="' + a.id + '" style="display:inline; margin-left:8px;">ubah</button> ' +
+      '<button class="backlink" data-del="' + a.id + '" style="display:inline; margin-left:8px;">hapus</button></div>';
+  }).join("");
+  render('<h2 class="screen-title">Daftar aset</h2><p class="help">Contoh: kursi pijat, kasur, alat. Dicatat sebesar harga beli.</p><div class="card">' + (list || '<p class="muted">Belum ada aset.</p>') + '</div>' +
+    '<label for="n">Nama aset</label><input id="n" type="text" placeholder="contoh: Kursi pijat" />' +
+    '<label for="q">Jumlah unit</label><input id="q" type="tel" inputmode="numeric" value="1" />' +
+    '<label for="c">Harga perolehan per unit (rupiah)</label><input id="c" type="tel" inputmode="numeric" />' +
+    '<p class="help">Sumber dana pembelian aset:</p>' +
+    '<button class="btn accent" id="kas" style="text-align:center;">Tambah (dari kas usaha)</button>' +
+    '<button class="btn" id="mod" style="text-align:center;">Tambah (dari modal pribadi)</button>' +
+    '<button class="btn" id="hibah" style="text-align:center;">Tambah (dari dana hibah)</button>' +
+    '<button class="backlink" id="back">Kembali</button>');
+  function add(ac) {
+    var n = el("n").value.trim(), q = digits(el("q").value) || 1, u = digits(el("c").value);
+    if (!n || u <= 0) { announce("Isi nama & harga per unit."); return; }
+    if (q < 1) q = 1;
+    db.assets.push({ id: uid(), name: n, qty: q, unitCost: u, cost: q * u, acquire: ac, dateStr: todayStr(), createdAt: new Date().toISOString() });
+    saveDB();
+    announce("Aset " + n + " sebanyak " + q + " unit tercatat, " + assetSourceLabel(ac) + ".");
+    assetScreen();
+  }
+  on("kas", "click", function () { add("kas"); });
+  on("mod", "click", function () { add("modal"); });
+  on("hibah", "click", function () { add("hibah"); });
+  each("[data-edit]", function (b) { b.addEventListener("click", function () { editAsset(b.getAttribute("data-edit")); }); });
+  each("[data-del]", function (b) {
+    b.addEventListener("click", function () {
+      var id = b.getAttribute("data-del");
+      var a = db.assets.filter(function (x) { return x.id === id; })[0];
+      confirmSimple("Hapus aset?", (a ? esc(a.name) : "Aset ini") + " akan dihapus dari daftar aset dan neraca. Lanjutkan?",
+        function () { db.assets = db.assets.filter(function (x) { return x.id !== id; }); saveDB(); announce("Aset dihapus."); assetScreen(); },
+        assetScreen);
+    });
+  });
+  onBack("back", settingsScreen);
+}
+
+function editAsset(id) {
+  var a = db.assets.filter(function (x) { return x.id === id; })[0];
+  if (!a) { assetScreen(); return; }
+  var qty = a.qty || 1;
+  var unitCost = a.unitCost || a.cost || 0;
+  function opt(v, label) { return '<option value="' + v + '"' + (a.acquire === v ? ' selected' : '') + '>' + label + '</option>'; }
+  render('<h2 class="screen-title">Ubah aset</h2>' +
+    '<label for="n">Nama aset</label><input id="n" type="text" value="' + esc(a.name) + '" />' +
+    '<label for="q">Jumlah unit</label><input id="q" type="tel" inputmode="numeric" value="' + qty + '" />' +
+    '<label for="c">Harga perolehan per unit (rupiah)</label><input id="c" type="tel" inputmode="numeric" value="' + unitCost + '" />' +
+    '<label for="src">Sumber dana</label><select id="src">' + opt("kas", "Dari kas usaha") + opt("modal", "Dari modal pribadi") + opt("hibah", "Dari dana hibah") + '</select>' +
+    '<button class="btn primary big" id="ok">Simpan perubahan</button>' +
+    '<button class="backlink" id="back">Kembali</button>');
+  on("ok", "click", function () {
+    var n = el("n").value.trim(), q = digits(el("q").value) || 1, u = digits(el("c").value);
+    if (!n || u <= 0) { announce("Isi nama & harga per unit."); return; }
+    if (q < 1) q = 1;
+    a.name = n; a.qty = q; a.unitCost = u; a.cost = q * u; a.acquire = el("src").value;
+    saveDB(); announce("Aset diperbarui."); assetScreen();
+  });
+  onBack("back", assetScreen);
 }
 
 function pinScreen() {
   render('<h2 class="screen-title">Ubah PIN</h2><label for="o">PIN lama</label><input id="o" type="tel" inputmode="numeric" /><label for="n">PIN baru (4-6 angka)</label><input id="n" type="tel" inputmode="numeric" /><button class="btn primary big" id="ok">Simpan</button><button class="backlink" id="back">Kembali</button>');
   on("ok", "click", function () { if (el("o").value.trim() !== db.settings.ownerPin) { announce("PIN lama salah."); return; } var n = el("n").value.trim(); if (!/^[0-9]{4,6}$/.test(n)) { announce("PIN baru harus 4-6 angka."); return; } db.settings.ownerPin = n; saveDB(); announce("PIN diubah."); settingsScreen(); });
-  on("back", "click", settingsScreen);
+  onBack("back", settingsScreen);
 }
 
 function backup() {
@@ -1384,7 +1684,7 @@ function restore(ev) {
   r.readAsText(f);
 }
 
-/* =================== VOUCHER =================== */
+/* =================== VOUCHER (dipulihkan; hilang dari berkas yang dikirim) =================== */
 var VOUCHER_RETURN_PCT = 20, VOUCHER_RETURN_DAYS = 7;
 var VOUCHER_REFERRAL_PCT = 20, VOUCHER_REFERRAL_DAYS = 10;
 
@@ -1488,10 +1788,10 @@ function referralCreate(prefName, prefPhone, backFn) {
     var v = createReferralVoucher(nm, el("rp").value.trim());
     voucherShow(v, backFn);
   });
-  on("back", "click", function () { (backFn || home)(); });
+  onBack("back", backFn || home);
 }
 
-function voucherShow(v, backFn) {
+function voucherShow(v, goBack) {
   var svg = qrSvg(v.code);
   var qrBlock = svg
     ? '<div aria-hidden="true" style="max-width:240px;margin:12px auto;background:#fff;padding:10px;border-radius:12px">' + svg + '</div>'
@@ -1514,7 +1814,8 @@ function voucherShow(v, backFn) {
     '<button class="btn primary" id="done" style="text-align:center;">Selesai</button>'
   );
   on("wa", "click", function () { voucherWA(v); });
-  on("done", "click", function () { (backFn || home)(); });
+  on("done", "click", function () { (goBack || home)(); });
+  backFn = goBack || home;
 }
 
 function voucherWA(v) {
@@ -1545,7 +1846,7 @@ function voucherListScreen() {
       : st === "expired" ? "kedaluwarsa " + tglPanjang(v.expiryDate) : "dibatalkan";
     var who = (v.kind === "referral" || v.kind === "referral_reward") ? (v.referrerName || "") : (v.customer || "");
     return '<div class="list-item"><strong style="letter-spacing:1px">' + esc(v.code) + '</strong> — diskon ' + v.percent + '%<br><span class="muted">' + voucherKindLabel(v) + ' · ' + label + (who ? " · " + esc(who) : "") + '</span>' +
-      (st === "active" ? '<br><button class="btn" data-show="' + v.id + '" style="margin-top:8px">Lihat / kirim</button><button class="btn danger" data-void="' + v.id + '">Batalkan voucher</button>' : '') + '</div>';
+      (st === "active" ? '<br><button class="btn" data-show="' + v.id + '" style="margin-top:8px; padding:10px; min-height:auto; font-size:1rem;">Lihat / kirim</button><button class="btn danger" data-void="' + v.id + '" style="padding:10px; min-height:auto; font-size:1rem;">Batalkan voucher</button>' : '') + '</div>';
   }
 
   render(
@@ -1560,5 +1861,5 @@ function voucherListScreen() {
   on("newref", "click", function () { referralCreate("", "", voucherListScreen); });
   each("[data-show]", function (b) { b.addEventListener("click", function () { var v = findVoucherById(b.getAttribute("data-show")); if (v) voucherShow(v, voucherListScreen); }); });
   each("[data-void]", function (b) { b.addEventListener("click", function () { var v = findVoucherById(b.getAttribute("data-void")); if (v) { v.status = "void"; saveDB(); announce("Voucher " + v.code + " dibatalkan."); voucherListScreen(); } }); });
-  on("back", "click", home);
+  onBack("back", home);
 }
