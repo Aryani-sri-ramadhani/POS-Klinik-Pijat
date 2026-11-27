@@ -103,8 +103,40 @@ function setHeader() {
   }
 }
 
+/* Navigasi tombol back HP/browser.
+   backFn = aksi "kembali" untuk layar yang sedang tampil (null bila di menu utama).
+   Direset setiap render; tiap layar mengisinya lewat onBack(). */
+var backFn = null;
+
+function onBack(id, fn) {
+  on(id, "click", fn);
+  backFn = fn;
+}
+
+function initHistory() {
+  try {
+    history.replaceState({ app: true }, "");
+    history.pushState({ app: true }, "");
+  } catch (e) {}
+  window.addEventListener("popstate", function () {
+    // Selalu sisakan satu entri riwayat supaya tekan back berikutnya tetap tertangkap,
+    // tidak langsung keluar dari aplikasi.
+    try { history.pushState({ app: true }, ""); } catch (e) {}
+    if (typeof backFn === "function") {
+      var f = backFn;
+      f();
+    } else {
+      announce("Anda berada di menu utama.");
+    }
+  });
+}
+
 function render(html) {
   if (!app) app = document.getElementById("app");
+
+  // Setiap layar baru: aksi "kembali" direset. Layar yang punya tombol kembali
+  // akan mengisinya lagi lewat onBack(), sehingga tombol back HP mengikuti.
+  backFn = null;
 
   // Isi layar dipasang serentak (sinkron) supaya tombol bisa langsung diberi
   // perintah. Transisi halus dilakukan lewat opacity setelahnya, tanpa menunda

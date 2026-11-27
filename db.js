@@ -25,6 +25,7 @@ function blankDB() {
       ownerPin: "",
       phone: "0813 1850 744",
       address: "Jl. Kramat Sentiong No. 57A, Jakarta Pusat",
+      logo: "",
       transportFee: 20000,
       defaultCommission: 60,
       setupDone: false,

@@ -423,3 +423,28 @@ button {
   outline: 3px solid var(--focus) !important;
   outline-offset: 3px !important;
 }
+
+/* ====== Tambahan: transisi layar & kotak statistik beranda ====== */
+#app{ transition:opacity .18s ease; }
+.statrow{ display:flex; gap:10px; margin-bottom:16px; }
+.statrow .box{ flex:1; background:var(--card); border:2px solid var(--line); border-radius:12px; padding:12px; text-align:center; }
+.statrow .box b{ display:block; font-size:1.05rem; font-weight:800; margin-top:3px; white-space:nowrap; }
+.statrow .box .lbl{ font-size:.72rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+
+/* ====== Struk cetak: tersembunyi di layar, muncul saat mencetak ====== */
+#print-area{ display:none; }
+@media print{
+  body{ background:#fff; }
+  header.appbar, .wrap, #announce{ display:none !important; }
+  #print-area{
+    display:block !important;
+    width:58mm; margin:0 auto; color:#000;
+    font-family:"Courier New",monospace; font-size:12px; line-height:1.35;
+  }
+  #print-area .r-center{ text-align:center; }
+  #print-area .r-bold{ font-weight:700; }
+  #print-area .r-big{ font-size:14px; }
+  #print-area .r-row{ display:flex; justify-content:space-between; gap:8px; }
+  #print-area .r-sep{ border-top:1px dashed #000; margin:6px 0; }
+  #print-area img{ filter:grayscale(100%); }
+}
